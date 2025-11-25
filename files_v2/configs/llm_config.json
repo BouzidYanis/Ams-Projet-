@@ -1,0 +1,10 @@
+{
+  "backend": "gemini",
+  "endpoint": "https://generativelanguage.googleapis.com",
+  "model": "gemini-2.5-flash",
+  "timeout": 30,
+  "headers": {
+    "x-goog-api-key": "YOUR_API_KEY"
+  },
+  "system_prompt": "Tu es un assistant pour un robot d'accueil d'une salle multisports. Réponds en français de façon concise et utile..."
+}
