@@ -1,0 +1,20 @@
+# Python (Fichiers compilés et caches)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environnements virtuels (au cas où ils rentreraient dans le dossier projet)
+env_web/
+pepper_venv/
+pepper_venv_wsl/
+
+# Fichiers Audacity et audio temporaires
+*.aup3
+*.aup3-shm
+*.aup3-wal
+temp_*.wav
+
+# Fichiers Excel et cours (souvent inutiles dans le code)
+*.xlsx
+PDF cours/
