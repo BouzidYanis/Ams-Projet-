@@ -36,10 +36,12 @@ RULES = {
     "ask_activities": "Nous proposons fitness, basket, natation, tennis, futsal et yoga. Laquelle vous intéresse ?",
 }
 
+llm_openai = "llm_openai_config.json"
+
 class DialogManager:
     def __init__(self, sessions: SessionStore, llm_config_path: str = None):
         self.sessions = sessions
-        cfg_path = llm_config_path or os.path.join(os.path.dirname(__file__), "..", "configs", "llm_config.json")
+        cfg_path = llm_config_path or os.path.join(os.path.dirname(__file__), "..", "configs", llm_openai)
         self.llm = LLMClient(cfg_path)
         # system prompt can be overridden in config file (optional)
         try:
@@ -65,6 +67,14 @@ class DialogManager:
         parse_result should contain at least {"intent": str, "entities": {...}} and original text under 'raw_text'
         The robot should pass the user's raw text in parse_result['raw_text'] or we use last user message in session.
         """
+
+        # --- BLOC DE DEBUG AJOUTÉ ---
+        print("\n" + "="*40)
+        print("[DEBUG DM] Entrée dans handle()")
+        print("[DEBUG DM] Session ID: {}".format(session_id))
+        print("[DEBUG DM] parse_result complet: {}".format(json.dumps(parse_result, indent=2)))
+        # ----------------------------
+
         intent = parse_result.get("intent", "unknown")
         entities = parse_result.get("entities", {})
         user_text = parse_result.get("raw_text") or parse_result.get("text") or ""
@@ -78,7 +88,12 @@ class DialogManager:
         # Try LLM generation
         try:
             print("[DialogManager] calling LLM with intent:", intent)
-            assistant_text = self.llm.generate_chat(self.system_prompt, history)
+
+            # System pront in modelfile for ollama models -> ici on passe une chaîne vide
+            # assistant_text = self.llm.generate_chat(self.system_prompt, history)
+            assistant_text = self.llm.generate_chat("", history)
+            
+            
             # append assistant message to history
             self._append_message(session_id, "assistant", assistant_text)
             # Basic post-processing or action extraction can be done here (simple heuristics)
@@ -116,3 +131,48 @@ class DialogManager:
             default = "Désolé, le système de dialogue n'est pas disponible pour le moment. Pouvez-vous reformuler ?"
             self._append_message(session_id, "assistant", default)
             return default, {}
+        
+if __name__ == "__main__":
+    import time
+    
+    # 1. Initialize the storage and manager
+    # In production, this persists as long as the robot's process is running
+    store = SessionStore(ttl_seconds=3600)
+    dm = DialogManager(store)
+    
+    # 2. Simulate a unique session ID (e.g., generated when a person is detected)
+    sid = "robot_session_xyz"
+    
+    print("--- STEP 1: Initial State ---")
+    # This creates the entry in SessionStore
+    initial_sid = store.create_session() 
+    print("Store after creation:", store.get(initial_sid))
+
+    print("\n--- STEP 2: First Interaction (Greeting) ---")
+    # Simulation of what the NLU (Natural Language Understanding) would pass to the manager
+    parse_1 = {
+        "intent": "greeting",
+        "raw_text": "Bonjour, comment tu t'appelles ?"
+    }
+    
+    # The 'handle' method will: 
+    #   1. Call _append_message (User) -> updates _store
+    #   2. Call LLMClient -> gets response
+    #   3. Call _append_message (Assistant) -> updates _store
+    response, actions = dm.handle(sid, parse_1)
+    
+    print("Robot Response:", response)
+    print("Updated History:", store.get(sid)["history"])
+
+    print("\n--- STEP 3: Second Interaction (Contextual) ---")
+    parse_2 = {
+        "intent": "ask_activities",
+        "raw_text": "Quelles sont les activités ?"
+    }
+    dm.handle(sid, parse_2)
+    
+    # Let's look at the SessionStore one last time
+    final_state = store.get(sid)
+    print("Final 'history' length:", len(final_state["history"]))
+    for turn in final_state["history"]:
+        print("  {0}: {1}".format(turn['role'], turn['content']))

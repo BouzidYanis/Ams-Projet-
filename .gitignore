@@ -4,6 +4,9 @@ __pycache__/
 *.pyo
 *.pyd
 
+#Variables d'environnement
+.env
+
 # Environnements virtuels (au cas où ils rentreraient dans le dossier projet)
 env_web/
 pepper_venv/

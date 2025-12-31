@@ -3,6 +3,9 @@ uvicorn[standard]==0.22.0
 pydantic==1.10.12
 requests==2.31.0
 
+# Support de l'envoi de fichiers (Crucial pour /v1/asr)
+python-multipart==0.0.6
+
 # ASR (Reconnaissance vocale)
 faster-whisper==1.0.3
 
@@ -12,3 +15,4 @@ nvidia-cudnn-cu12==8.9.2.26
 
 # Gestion des chemins (Optionnel mais recommandé pour Python 3.10+)
 pathlib==1.0.1
+python-dotenv

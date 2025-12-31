@@ -1,0 +1,9 @@
+{
+  "backend": "openai",
+  "endpoint": "http://localhost:11434/v1",
+  "model": "llama-pepper:latest",
+  "timeout": 60,
+  "headers": {
+    "Content-Type": "application/json"
+  }
+}

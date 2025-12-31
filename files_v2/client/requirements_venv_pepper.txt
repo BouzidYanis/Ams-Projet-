@@ -1,0 +1,18 @@
+# --- Communication HTTP ---
+# Requests est essentiel pour envoyer les fichiers .wav à l'API
+requests==2.27.1
+
+# --- Transfert de fichiers (SSH/SCP) ---
+# Paramiko permet de récupérer les fichiers sur le disque dur de Pepper via SSH
+paramiko==2.12.0
+scp==0.14.4
+
+# --- Utilitaires ---
+# Pour gérer les configurations et les encodages (Python 2 est capricieux avec l'UTF-8)
+six==1.16.0
+urllib3==1.26.15
+
+pyaudio==0.2.11
+
+#pour les depebdabces linux
+#sudo apt-get install libasound-dev portaudio19-dev
