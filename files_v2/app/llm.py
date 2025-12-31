@@ -13,8 +13,11 @@ import requests
 from typing import List, Dict, Any
 import json
 import os
+from dotenv import load_dotenv
 
-DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "configs", "llm_config.json")
+load_dotenv()
+llm_openai = "llm_openai_config.json"
+DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "configs", llm_openai)
 
 
 class LLMError(Exception):
@@ -32,11 +35,68 @@ class LLMClient:
         self.timeout = cfg.get("timeout", 30)
         # optional headers (api keys, etc.). For Gemini, we pass the key in query param, but headers can still be used.
         self.headers = cfg.get("headers", {})
+        
         # optional: API key for Gemini (can be in headers or in this field)
-        self.api_key = cfg.get("api_key")
-
+        # PRIORITÉ : On regarde d'abord dans le fichier .env, sinon dans le JSON
+        env_key = os.getenv("GEMINI_API_KEY")
+        if env_key:
+            self.api_key = env_key
+            # Si ton backend Gemini utilise les headers, on met à jour aussi
+            self.headers["x-goog-api-key"] = env_key
+        else:
+            self.api_key = cfg.get("api_key")
     # ---------- Backends type chat-completions (OpenAI-like) ----------
 
+    def _DEBUG_call_chat_completions(self, messages):
+        import time
+        import requests
+        
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "stream": False,
+            "options": {
+                "temperature": 0.3
+            }
+        }
+        
+        # Correction : on utilise self.endpoint et on s'assure du chemin complet
+        # Si ton endpoint est déjà http://localhost:11434/v1, vérifie la concaténation
+        url = "{0}/chat/completions".format(self.endpoint.rstrip('/'))
+        
+        print("\n--- [DEBUG OLLAMA START] ---")
+        print("URL cible: {0}".format(url))
+        
+        start_time = time.time()
+        try:
+            r = requests.post(url, json=payload, headers=self.headers, timeout=self.timeout)
+            duration = time.time() - start_time
+            
+            print("Status Code: {0} | Time: {1:.2f}s".format(r.status_code, duration))
+            
+            if r.status_code != 200:
+                print("SERVER ERROR BODY: {0}".format(r.text))
+                return ""
+
+            data = r.json()
+            # On essaie d'extraire le contenu selon le format standard OpenAI/Ollama
+            choices = data.get("choices", [])
+            if choices:
+                content = choices[0].get("message", {}).get("content", "")
+            else:
+                # Fallback si Ollama répond au format direct /api/chat au lieu de /v1
+                content = data.get("message", {}).get("content", "")
+                
+            print("Done Reason: {0}".format(data.get("choices", [{}])[0].get("finish_reason", "unknown")))
+            print("Content: '{0}'".format(content))
+            print("--- [DEBUG OLLAMA END] ---\n")
+            
+            return content
+
+        except Exception as e:
+            print("!!! CRITICAL EXCEPTION: {0}".format(str(e)))
+            return ""
+        
     def _call_chat_completions(self, messages: List[Dict[str, str]]) -> str:
         """
         Call an endpoint /v1/chat/completions compatible with OpenAI format.
@@ -48,6 +108,9 @@ class LLMClient:
         payload = {
             "model": self.model,
             "messages": messages,
+            "stream": False,
+            "temperature": 0.2,
+            "max_tokens": 150
         }
         r = requests.post(url, json=payload, headers=self.headers, timeout=self.timeout)
         if r.status_code != 200:
@@ -165,7 +228,23 @@ class LLMClient:
                 messages.append({"role": "system", "content": system_prompt})
             for msg in history:
                 messages.append({"role": msg["role"], "content": msg["content"]})
-            return self._call_chat_completions(messages)
+            
+            # --- DEBUG 1: CE QUE NOUS ENVOYONS ---
+            print(f"\n[LLM DEBUG] Prompt envoyé au backend {self.backend}:")
+            for m in messages:
+                print(f"  {m['role'].upper()}: {m['content'][:100]}...") # Tronqué pour lisibilité
+            
+            try:
+                # Appel effectif
+                response_text = self._DEBUG_call_chat_completions(messages)
+                
+                # --- DEBUG 2: CE QUE NOUS RECEVONS ---
+                print(f"[LLM DEBUG] Réponse brute reçue: '{response_text}'")
+                
+                return response_text
+            except Exception as e:
+                print(f"[LLM ERROR] Crash pendant l'appel LLM: {str(e)}")
+                raise
 
         # Backend TGI (prompt concaténé)
         elif self.backend == "hf_tgi":

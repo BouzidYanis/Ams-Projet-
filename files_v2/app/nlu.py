@@ -56,4 +56,9 @@ class NLU:
         # confidence basic heuristic
         confidence = best_score if best_score > 0 else 0.0
 
-        return {"intent": best_intent, "confidence": confidence, "entities": entities}
+        return {
+            "intent": best_intent,
+            "confidence": confidence,
+            "entities": entities,
+            "raw_text": text
+        }
