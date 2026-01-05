@@ -1,28 +1,75 @@
 {
   "greeting": {
-    "keywords": ["bonjour", "salut", "bonsoir", "hello", "hi"],
+    "keywords": ["bonjour", "saluer", "salut", "bonsoir", "hello"],
+    "examples": [
+      "bonjour",
+      "salut robot",
+      "bonsoir",
+      "hello",
+      "salutations"
+    ],
     "description": "salutation"
   },
+
   "ask_hours": {
-    "keywords": ["horaire", "ouvert", "heures", "heure", "ouvre"],
+    "keywords": ["horaire", "heure", "ouverture", "ouvrir"],
+    "examples": [
+      "quels sont les horaires",
+      "à quelle heure vous ouvrez",
+      "c'est ouvert quand",
+      "à quelle heure vous fermez",
+      "vous êtes ouverts le dimanche ?"
+    ],
     "description": "demande d'horaires"
   },
+
   "ask_activities": {
-    "keywords": ["activit", "cours", "propose", "programme"],
+    "keywords": ["activité", "cours", "programme", "sport"],
+    "examples": [
+      "quelles activités proposez-vous",
+      "quels cours sont disponibles",
+      "le programme des activités",
+      "vous proposez du yoga ?",
+      "il y a des cours de fitness ?"
+    ],
     "description": "liste des activités"
   },
+
   "navigate": {
-    "keywords": ["aller", "où", "direction", "orienter", "guide", "vestiaire", "bureau", "salle", "terrain"],
+    "keywords": ["aller", "où", "trouver", "direction", "orienter", "guider"],
+    "examples": [
+      "où est la salle de sport",
+      "peux-tu m'orienter vers le vestiaire",
+      "comment aller au terrain",
+      "je cherche l'accueil",
+      "où est le secrétariat"
+    ],
     "description": "demande de guidage/orientation"
   },
+
   "book_activity": {
-    "keywords": ["inscrire", "inscription", "réserver", "reserver", "réservation", "réserver"],
+    "keywords": ["inscrire", "inscription", "réserver", "réservation"],
+    "examples": [
+      "je veux m'inscrire au yoga",
+      "réserver un cours de fitness",
+      "faire une réservation",
+      "réserver un cours",
+      "inscription au futsal"
+    ],
     "description": "réservation/inscription"
   },
+
   "who_are_you": {
-    "keywords": ["qui es-tu", "qui êtes", "tu es", "robot", "qui"],
+    "keywords": ["qui", "être", "robot", "nom"],
+    "examples": [
+      "qui es-tu",
+      "tu es qui",
+      "quel est ton rôle",
+      "tu sers à quoi"
+    ],
     "description": "demande identité robot"
   },
+
   "unknown": {
     "keywords": [],
     "description": "fallback"

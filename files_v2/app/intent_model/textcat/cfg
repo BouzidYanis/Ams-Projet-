@@ -1,0 +1,12 @@
+{
+  "labels":[
+    "ask_activities",
+    "ask_hours",
+    "book_activity",
+    "greeting",
+    "navigate",
+    "who_are_you"
+  ],
+  "threshold":0.0,
+  "positive_label":null
+}

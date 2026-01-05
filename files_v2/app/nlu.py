@@ -1,64 +1,94 @@
-import json
 import os
+from pathlib import Path
 from typing import Dict, Any
-import re
+import spacy
 
-# Optional: spaCy usage placeholder (commented). Install spaCy models separately if you want ML parsing.
-# import spacy
-# nlp_fr = spacy.load("fr_core_news_sm")
-# nlp_en = spacy.load("en_core_web_sm")
-
-INTENTS_FILE = os.path.join(os.path.dirname(__file__), "..", "configs", "intents.json")
 
 class NLU:
-    def __init__(self):
-        with open(INTENTS_FILE, "r", encoding="utf-8") as f:
-            self.intents = json.load(f)
-        # build simple keyword index
-        self.keyword_map = []
-        for intent_name, spec in self.intents.items():
-            kws = spec.get("keywords", [])
-            self.keyword_map.append((intent_name, kws, spec))
+    # Default gazetteers (runtime fallback if entity_ruler is present but empty)
+    _DEFAULT_ACTIVITIES = ["yoga", "fitness", "basket", "basketball", "tennis", "futsal", "natation"]
+    _DEFAULT_LOCATIONS = ["salle", "salle de sport", "vestiaire", "terrain", "accueil", "secrétariat"]
 
-    def parse(self, text: str, lang: str = "fr") -> Dict[str, Any]:
-        text_low = text.lower()
-        # simple rule-based match by keywords
-        best_intent = "unknown"
-        best_score = 0.0
-        entities = {}
+    def __init__(
+        self,
+        intent_model_path: str | None = None,
+        entity_model_path: str | None = None,
+        threshold: float | None = None,
+        debug: bool | None = None,
+    ):
+        base_dir = Path(__file__).resolve().parent
 
-        for intent_name, keywords, spec in self.keyword_map:
-            score = 0
-            for kw in keywords:
-                if kw in text_low:
-                    score += 1
-            # also check regex entities
-            if score > best_score:
-                best_intent = intent_name
-                best_score = float(score) / max(1, len(keywords))
+        intent_path = Path(intent_model_path) if intent_model_path else (base_dir / "intent_model")
+        entity_path = Path(entity_model_path) if entity_model_path else (base_dir / "entity_model")
 
-        # extract simple entities (time, date, activity, location)
-        # time regex (HH:MM or matin/après-midi)
-        time_match = re.search(r"((?:[01]?\d|2[0-3])[:h][0-5]\d)|matin|après-?midi|soir", text_low)
-        if time_match:
-            entities["time"] = time_match.group(0)
-        # activity
-        for act in ["fitness", "basket", "natation", "tennis", "futsal", "yoga"]:
-            if act in text_low:
-                entities.setdefault("activity", act)
-                break
-        # location (vestiaire, bureau, terrain, salle)
-        for loc in ["vestiaire", "vestiaires", "bureau", "terrain", "salle", "accueil", "secrétariat"]:
-            if loc in text_low:
-                entities.setdefault("location", loc)
-                break
+        # Allow override via env vars
+        intent_path = Path(os.getenv("INTENT_MODEL_PATH", str(intent_path)))
+        entity_path = Path(os.getenv("ENTITY_MODEL_PATH", str(entity_path)))
 
-        # confidence basic heuristic
-        confidence = best_score if best_score > 0 else 0.0
+        thr_env = os.getenv("NLU_INTENT_THRESHOLD")
+        self.threshold = threshold if threshold is not None else (float(thr_env) if thr_env else 0.4)
+
+        dbg_env = os.getenv("NLU_DEBUG")
+        self.debug = debug if debug is not None else (dbg_env == "1")
+
+        self.intent_nlp = spacy.load(str(intent_path))
+        self.entity_nlp = spacy.load(str(entity_path))
+
+        self._ensure_entity_ruler_patterns()
+
+    def _ensure_entity_ruler_patterns(self) -> None:
+        if "entity_ruler" not in getattr(self.entity_nlp, "pipe_names", []):
+            if self.debug:
+                print("[NLU] entity_model has no entity_ruler pipe")
+            return
+
+        ruler = self.entity_nlp.get_pipe("entity_ruler")
+
+        # Some saved models end up with an empty ruler; inject defaults.
+        if getattr(ruler, "patterns", None) and len(ruler.patterns) > 0:
+            if self.debug:
+                print(f"[NLU] entity_ruler patterns loaded: {len(ruler.patterns)}")
+            return
+
+        patterns = []
+        for a in self._DEFAULT_ACTIVITIES:
+            patterns.append({"label": "ACTIVITY", "pattern": a})
+        for l in self._DEFAULT_LOCATIONS:
+            patterns.append({"label": "LOCATION", "pattern": l})
+
+        ruler.add_patterns(patterns)
+
+        if self.debug:
+            print("[NLU] Injected default EntityRuler patterns:", len(ruler.patterns))
+            print("[NLU] entity_model pipes:", self.entity_nlp.pipe_names)
+
+    def parse(self, text: str) -> Dict[str, Any]:
+        text_in = (text or "").strip()
+        if not text_in:
+            return {"intent": "unknown", "confidence": 0.0, "entities": {}, "raw_text": text}
+
+        # Intent
+        doc_intent = self.intent_nlp(text_in)
+        intent = "unknown"
+        confidence = 0.0
+
+        if getattr(doc_intent, "cats", None):
+            intent = max(doc_intent.cats, key=doc_intent.cats.get)
+            confidence = float(doc_intent.cats.get(intent, 0.0))
+
+        if confidence < self.threshold:
+            intent = "unknown"
+
+        # Entities
+        doc_entities = self.entity_nlp(text_in)
+        entities: Dict[str, list[str]] = {}
+
+        for ent in doc_entities.ents:
+            entities.setdefault(ent.label_.lower(), []).append(ent.text)
 
         return {
-            "intent": best_intent,
-            "confidence": confidence,
+            "intent": intent,
+            "confidence": round(confidence, 2),
             "entities": entities,
-            "raw_text": text
+            "raw_text": text,
         }
