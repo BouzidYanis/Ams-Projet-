@@ -19,3 +19,4 @@ python-dotenv
 
 pymongo[srv]
 spacy
+networkx
