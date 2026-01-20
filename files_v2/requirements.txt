@@ -18,3 +18,4 @@ pathlib==1.0.1
 python-dotenv
 
 pymongo[srv]
+spacy

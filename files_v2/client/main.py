@@ -16,8 +16,12 @@ from audio_manager import AudioSense
 from robot_controller import PepperRobot
 
 # --- CONFIGURATION ---
-SERVER_URL = "http://192.168.1.74:8000"
-PHONE_URL = "http://192.168.1.38:8080/audio.wav"
+# SERVER_URL = "http://192.168.1.74:8000"
+SERVER_URL = "http://10.60.55.34:8000"
+
+# PHONE_URL = "http://192.168.1.38:8080/audio.wav"
+PHONE_URL = "http://10.60.55.196:8080/audio.wav"
+
 
 PEPPER_IP = "127.0.0.1"
 PEPPER_PORT = 9559

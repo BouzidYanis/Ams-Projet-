@@ -77,7 +77,8 @@ async def transcribe_audio(file: UploadFile = File(...)):
 
 @app.post("/v1/parse", response_model=ParseResponse)
 def parse(req: ParseRequest):
-    result = nlu.parse(req.text, req.lang)
+    # result = nlu.parse(req.text, req.lang)
+    result = nlu.parse(req.text)
     return ParseResponse(intent=result["intent"], confidence=result["confidence"], entities=result["entities"])
 
 @app.post("/v1/respond", response_model=RespondResponse)
@@ -86,7 +87,9 @@ def respond(req: RespondRequest):
     print(f"[DEBUG] Session ID recue du client: {req.session_id}")
     session_id = req.session_id or sessions.create_session()
     print(f"[DEBUG] Session ID utilisee: {session_id}")
-    parse_result = nlu.parse(req.text, req.lang)
+    # parse_result = nlu.parse(req.text, req.lang)
+    parse_result = nlu.parse(req.text)
+    
     try:
         response_text, actions = dialog.handle(session_id, parse_result)
     except Exception as e:

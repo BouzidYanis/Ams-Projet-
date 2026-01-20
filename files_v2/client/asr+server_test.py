@@ -10,8 +10,13 @@ from network_client import NetworkClient
 from audio_manager import AudioSense
 
 # --- CONFIGURATION ---
-SERVER_URL = "http://192.168.1.74:8000"
-PHONE_URL = "http://192.168.1.38:8080/audio.wav"
+# --- CONFIGURATION ---
+# SERVER_URL = "http://192.168.1.74:8000"
+SERVER_URL = "http://10.60.55.34:8000"
+
+# PHONE_URL = "http://192.168.1.38:8080/audio.wav"
+PHONE_URL = "http://10.60.55.196:8080/audio.wav"
+
 WAKE_WORDS = [u"pepper", u"bonjour"]
 CONVERSATION_TIMEOUT = 10 
 
