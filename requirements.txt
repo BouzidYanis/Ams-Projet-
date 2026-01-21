@@ -20,3 +20,5 @@ python-dotenv
 pymongo[srv]
 spacy
 networkx
+
+face-recognition==1.3.0
