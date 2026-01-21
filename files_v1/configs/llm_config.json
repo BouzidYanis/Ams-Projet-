@@ -1,8 +1,0 @@
-{
-  "backend": "fastchat",
-  "endpoint": "http://localhost:8000",
-  "model": "vicuna-13b",
-  "timeout": 30,
-  "headers": {},
-  "system_prompt": "Tu es un assistant pour un robot d'accueil d'une salle multisports. Réponds en français de façon concise et utile. Si une réservation est demandée, demande activité et créneau si absent."
-}
