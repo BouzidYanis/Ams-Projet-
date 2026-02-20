@@ -10,7 +10,7 @@ import json
 from nav import Navigation
 
 # Configuration
-PEPPER_IP = "192.168.13.66"
+PEPPER_IP = "192.168.13.230"
 PEPPER_PORT = 9559
 API_URL = "http://localhost:8000/v1/respond"
 WEB_BASE_URL = "http://10.126.8.40:5500/"
@@ -46,6 +46,7 @@ def main():
             destination_key = actions.get("destination_key", "")
             print("Navigation vers : {} ({})".format(actions.get("destination", ""), destination_key))
             nav.afficher_carte(destination_key)
+            session.service("ALTextToSpeech").say(response_text)
 
         # 6. Laisser la carte affichée quelques secondes
         time.sleep(10)

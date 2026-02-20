@@ -9,7 +9,7 @@ class Navigation:
         self.web_display = PepperWebDisplayService(session)
         self.session = session
     def afficher_carte(self, destination):
-        url = f"{self.api_base}/carte_navigation.html?destination={destination}"
+        url = "{}/carte_navigation.html?destination={}".format(self.api_base, destination)
         self.web_display.showUrl(url)
     
     def parler(self, message):

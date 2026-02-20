@@ -201,7 +201,7 @@ class DialogManager:
         # Il faut au moins une salle ou une activité
         if not has_salle and not has_activite:
             return "salle_or_activite", "Quelle salle ou quelle activite souhaitez-vous reserver ?"
-
+        
         if not has_jour:
             return "jour", "Pour quel jour souhaitez-vous reserver ?"
 
@@ -307,37 +307,61 @@ class DialogManager:
         # On a la salle (et éventuellement l'activité), le jour et l'heure → confirmer
         return self._confirm_booking(session_id, slots)
 
+    def _resolve_salle(self, salle_key: str):
+        """
+        Résout une clé de salle normalisée (ex: 'salle_a', 'salle_b') 
+        vers le document MongoDB (ex: {"nom": "Salle A", "_id": ObjectId(...)}).
+        """
+        # "salle_a" → "salle a" → chercher "Salle A" en case-insensitive
+        search_name = salle_key.replace("_", " ")
+        salle_doc = db.get_collection("salle").find_one({
+            "$or": [
+                {"nom": {"$regex": "^" + search_name + "$", "$options": "i"}},
+                {"nom": {"$regex": "^" + salle_key + "$", "$options": "i"}},
+            ]
+        })
+        return salle_doc
+
     def _confirm_booking(self, session_id: str, slots: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
         """Confirme la réservation et nettoie les slots."""
-        salle = slots.get("salle", "?")
+        salle_key = slots.get("salle", "?")
         activite = slots.get("activite", "")
         jour = slots.get("jour", "?")
         heure = slots.get("heure", "?")
-        heure_fin = parse_heure_to_minutes(heure) + 60  # on suppose une durée de 1h pour l'activité
+        heure_fin = parse_heure_to_minutes(heure) + 60
         heure_fin = parse_minutes_to_heure(heure_fin)
+
+        # Résoudre la salle vers son document MongoDB
+        salle_doc = self._resolve_salle(salle_key)
+
+        if not salle_doc:
+            text = "Désolé, je ne trouve pas la salle '{}' dans notre système. Pouvez-vous vérifier le nom ?".format(salle_key)
+            self._clear_booking_slots(session_id)
+            self._append_message(session_id, "assistant", text)
+            return text, {"type": "booking_error", "reason": "salle_not_found"}
+
+        salle_id = salle_doc["_id"]
+        salle_nom = salle_doc["nom"]  # "Salle A", "Salle B", etc.
 
         activite_str = " pour l'activité {}".format(activite) if activite else ""
 
-        test = self._is_room_booked(salle, jour, heure, heure_fin)
-        print("test = ",test)
-
-        if self._is_room_booked(salle,jour,heure,heure_fin):
-            text = "Désolé, la salle {} est déjà réservée le {} à {}. Voulez-vous essayer un autre créneau ou une autre salle ?".format(
-                salle, jour, heure
+        if self._is_room_booked(salle_id, jour, heure, heure_fin):
+            text = "Désolé, la salle {} est déjà réservée le {} de {} à {}. Voulez-vous essayer un autre créneau ou une autre salle ?".format(
+                salle_nom, jour, heure, heure_fin
             )
             self._clear_booking_slots(session_id)
             self._append_message(session_id, "assistant", text)
             return text, {"type": "booking_no_availability"}
-        
-        text = "Parfait ! Je confirme votre réservation de la salle {}{} le {} à {}. Souhaitez-vous autre chose ?".format(
-            salle, activite_str, jour, heure
+
+        text = "Parfait ! Je confirme votre réservation de la salle {}{} le {} de {} à {}. Souhaitez-vous autre chose ?".format(
+            salle_nom, activite_str, jour, heure, heure_fin
         )
-        
-        
+
         actions = {
             "type": "booking_confirmed",
             "booking": {
-                "salle": salle,
+                "salle_id": str(salle_id),
+                "salle_nom": salle_nom,
                 "activite": activite,
                 "jour": jour,
                 "heure_debut": heure,
@@ -345,10 +369,10 @@ class DialogManager:
             }
         }
 
-        # Enregistrer la réservation dans la base
+        # Enregistrer avec l'ObjectId de la salle
         try:
             reservation_data = {
-                "salle": salle,
+                "salle": salle_id,
                 "activite": activite,
                 "jour": jour,
                 "heure_debut": heure,

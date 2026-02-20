@@ -4,7 +4,7 @@ import sys
 import time
 from nav import Navigation
 # Configuration
-PEPPER_IP = "192.168.13.66"  # Remplacez par l'IP de votre Pepper
+PEPPER_IP = "192.168.13.230"  # Remplacez par l'IP de votre Pepper
 PEPPER_PORT = 9559
 
 # def afficher_page_web(url):
