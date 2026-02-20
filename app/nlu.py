@@ -1,93 +1,86 @@
-import os
-from pathlib import Path
 from typing import Dict, Any
-import spacy
+
+from app.nlu_train import traiter_requete as matcher_parse
 
 
 class NLU:
-    # Default gazetteers (runtime fallback if entity_ruler is present but empty)
-    _DEFAULT_ACTIVITIES = ["yoga", "fitness", "basket", "basketball", "tennis", "futsal", "natation"]
-    _DEFAULT_LOCATIONS = ["salle", "salle de sport", "vestiaire", "terrain", "accueil", "secrétariat"]
 
-    def __init__(
-        self,
-        intent_model_path: str | None = None,
-        entity_model_path: str | None = None,
-        threshold: float | None = None,
-        debug: bool | None = None,
-    ):
-        base_dir = Path(__file__).resolve().parent
+    # Mapping intent nlu_train → intent API
+    _INTENT_MAP = {
+        "salutation": "greeting",
+        "demander_heure": "ask_hours",
+        "demander_activite": "ask_activities",
+        "demander_lieu": "navigate",
+        "reserver": "book_activity",
+        "qui": "who_are_you",
+        "inconnu": "unknown",
+    }
 
-        intent_path = Path(intent_model_path) if intent_model_path else (base_dir / "intent_model")
-        entity_path = Path(entity_model_path) if entity_model_path else (base_dir / "entity_model")
+    def __init__(self, **kwargs):
+        # Pas de modèle à charger, tout vient de nlu_train.py
+        pass
 
-        # Allow override via env vars
-        intent_path = Path(os.getenv("INTENT_MODEL_PATH", str(intent_path)))
-        entity_path = Path(os.getenv("ENTITY_MODEL_PATH", str(entity_path)))
+    def _normalize_destination_key(self, raw: str) -> str:
+        """Normalize a destination string to a key usable by the tablet map."""
+        if raw is None:
+            return ""
+        s = str(raw).strip()
+        if len(s) >= 2 and ((s[0] == s[-1] == "'") or (s[0] == s[-1] == '"')):
+            s = s[1:-1].strip()
+        s = s.lower().strip()
+        s = " ".join(s.split())
 
-        thr_env = os.getenv("NLU_INTENT_THRESHOLD")
-        self.threshold = threshold if threshold is not None else (float(thr_env) if thr_env else 0.3)
+        direct = {
+            "salle a": "salle_a",
+            "salle b": "salle_b",
+            "salle c": "salle_c",
+            "salle d": "salle_d",
+            "salle natation": "natation",
+            "salle de natation": "natation",
+        }
+        if s in direct:
+            return direct[s]
 
-        dbg_env = os.getenv("NLU_DEBUG")
-        self.debug = debug if debug is not None else (dbg_env == "1")
+        s = s.replace("-", "_").replace(" ", "_")
+        return s
 
-        self.intent_nlp = spacy.load(str(intent_path))
-        self.entity_nlp = spacy.load(str(entity_path))
-
-        self._ensure_entity_ruler_patterns()
-
-    def _ensure_entity_ruler_patterns(self) -> None:
-        if "entity_ruler" not in getattr(self.entity_nlp, "pipe_names", []):
-            if self.debug:
-                print("[NLU] entity_model has no entity_ruler pipe")
-            return
-
-        ruler = self.entity_nlp.get_pipe("entity_ruler")
-
-        # Some saved models end up with an empty ruler; inject defaults.
-        if getattr(ruler, "patterns", None) and len(ruler.patterns) > 0:
-            if self.debug:
-                print(f"[NLU] entity_ruler patterns loaded: {len(ruler.patterns)}")
-            return
-
-        patterns = []
-        for a in self._DEFAULT_ACTIVITIES:
-            patterns.append({"label": "ACTIVITY", "pattern": a})
-        for l in self._DEFAULT_LOCATIONS:
-            patterns.append({"label": "LOCATION", "pattern": l})
-
-        ruler.add_patterns(patterns)
-
-        if self.debug:
-            print("[NLU] Injected default EntityRuler patterns:", len(ruler.patterns))
-            print("[NLU] entity_model pipes:", self.entity_nlp.pipe_names)
-
-    def __normalize_text(self, text: str) -> str:
-        return (text or "").strip().lower()
-    
     def parse(self, text: str, lang: str = "fr") -> Dict[str, Any]:
-        text_in = self.__normalize_text(text)
+        text_in = (text or "").strip().lower()
         if not text_in:
             return {"intent": "unknown", "confidence": 0.0, "entities": {}, "raw_text": text}
 
-        # Intent
-        doc_intent = self.intent_nlp(text_in)
-        intent = "unknown"
-        confidence = 0.0
+        # Tout passe par nlu_train.py
+        result = matcher_parse(text_in)
 
-        if getattr(doc_intent, "cats", None):
-            intent = max(doc_intent.cats, key=doc_intent.cats.get)
-            confidence = float(doc_intent.cats.get(intent, 0.0))
+        # Intent : mapper vers les noms utilisés par le DialogManager
+        raw_intent = result.get("intent", "inconnu")
+        intent = self._INTENT_MAP.get(raw_intent, raw_intent)
+        confidence = result.get("confidence", 0.0)
 
-        if confidence < self.threshold:
-            intent = "unknown"
+        # Entities : restructurer pour l'API
+        matcher_ents = result.get("entites", {})
+        entities: Dict[str, list] = {}
 
-        # Entities
-        doc_entities = self.entity_nlp(text_in)
-        entities: Dict[str, list[str]] = {}
+        # Lieux → location (normalisés)
+        for lieu in matcher_ents.get("lieux", []):
+            normalized = self._normalize_destination_key(lieu)
+            if normalized:
+                entities.setdefault("location", []).append(normalized)
 
-        for ent in doc_entities.ents:
-            entities.setdefault(ent.label_.lower(), []).append(ent.text)
+        # Sports → activity
+        for sport in matcher_ents.get("sports", []):
+            if sport:
+                entities.setdefault("activity", []).append(sport)
+
+        # Temps → time
+        for t in matcher_ents.get("temps", []):
+            if t:
+                entities.setdefault("time", []).append(t)
+
+        # Nombres → number
+        for n in matcher_ents.get("nombres", []):
+            if n:
+                entities.setdefault("number", []).append(n)
 
         return {
             "intent": intent,
@@ -95,17 +88,14 @@ class NLU:
             "entities": entities,
             "raw_text": text,
         }
-    
+
     def parse_intents_confidences(self, text: str) -> Dict[str, float]:
-        text_in = self.__normalize_text(text)
-        if not text_in:
-            return {}
-
-        doc_intent = self.intent_nlp(text_in)
-        intents_confidences: Dict[str, float] = {}
-
-        if getattr(doc_intent, "cats", None):
-            for intent, conf in doc_intent.cats.items():
-                intents_confidences[intent] = round(float(conf), 2)
-
-        return intents_confidences
+        """Retourne les scores de toutes les intents (ici un seul gagnant)."""
+        result = self.parse(text)
+        intent = result["intent"]
+        conf = result["confidence"]
+        all_intents = {v: 0.0 for v in self._INTENT_MAP.values()}
+        all_intents[intent] = conf
+        return all_intents
+    
+    

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """reco_face.py
 
 Implements the Choregraphe flow:

@@ -11,7 +11,7 @@ from app.sessions import SessionStore
 from app.speech import ASRModule
 
 from app.reservation import reserver_salle
-
+from app.navigation import InstructionGenerator
 
 app = FastAPI(title="Serveur de dialogue - Robot d'accueil")
 
@@ -105,6 +105,13 @@ def respond(req: RespondRequest):
     print(f"[DEBUG] Session ID utilisee: {session_id}")
     # parse_result = nlu.parse(req.text, req.lang)
     parse_result = nlu.parse(req.text)
+
+    # Vérifier si une réservation (slot filling) est en cours
+    session_data = sessions.get(session_id)
+    booking_in_progress = "booking_slots" in session_data
+    if parse_result["intent"] == "unknown" and not booking_in_progress:
+        response_text = "Désolé, je n'ai pas compris votre demande. Pouvez-vous reformuler ?"
+        return RespondResponse(text=response_text, actions={}, session_id=session_id)
     
     try:
         response_text, actions = dialog.handle(session_id, parse_result)
@@ -126,6 +133,7 @@ def reserver_salle_endpoint(req: ReservationRequest):
         return {"status": "success", "reservation_id": str(reservation_id)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
+
+
 if __name__ == "__main__":
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
