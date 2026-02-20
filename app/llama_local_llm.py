@@ -5,7 +5,7 @@ import json
 import sys
 
 class LLMManager:
-    def __init__(self, model_name="phi3.5:latest"):
+    def __init__(self, model_name="pepper-pro:latest"):
         self.base_url = "http://localhost:11434"
         self.model_name = model_name
 

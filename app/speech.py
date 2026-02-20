@@ -30,15 +30,20 @@ if sys.platform == "win32":
 from faster_whisper import WhisperModel
 
 class ASRModule:
-    def __init__(self, model_size="base", logprob_threshold=-1.0, nospeech_threshold=0.6):
+    def __init__(self, model_size="medium", logprob_threshold=-1.0, nospeech_threshold=0.6):
         # On force l'utilisation du processeur (cpu) si vous n'avez pas de GPU NVIDIA
         print(f"[ASR] Chargement du modèle Whisper ({model_size})...")
         # "int8" permet de rendre le modèle encore plus léger
-        self.model = WhisperModel(model_size,
-                                #   device="cuda",
-                                  device="cpu",
-                                #   compute_type="int8_float16")
-                                  compute_type="int8")
+
+# Pointing to your GDrive mount point inside the container
+        model_path = f"/root/.cache/huggingface/whisper_{model_size}_flat"
+        
+        self.model = WhisperModel(
+            model_path,
+            device="cuda",
+            compute_type="float32",  # Staying with float32 per your requirement
+            local_files_only=True    # Set to True only AFTER the first download to work offline
+        )
         
         self.logprob_threshold = logprob_threshold # Plus bas : modèle trop incertain
         self.nospeech_threshold = nospeech_threshold # Plus haut : Plus de tolérance au bruit
@@ -136,19 +141,19 @@ class ASRModule:
 
 
 if __name__=="__main__":
-    # 1. On récupère le dossier où se trouve speech.py (le dossier 'app')
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    
-    # 2. On construit le chemin vers le fichier de test
-    # Cela donnera : app/Audio_tests/audio_test.wav
-    test_file = os.path.join(current_dir, "Audio_tests", "audio_test.wav")
-    
-    asr = ASRModule(model_size="small")
+    test_file = "/ams_project/client/test_conversation.wav"
 
-    result = asr.process_audio(test_file)
+    # --- STEP 1: LOAD (The part you'll only do once when starting your robot) ---
+    load_start = time.time()
+    asr = ASRModule(model_size="medium")
+    print(f"DEBUG: Model Loading took {time.time() - load_start:.2f}s")
 
-    print("-" * 30)
-    print(f"Texte reconnu : {result['text']}")
-    print(f"Langue        : {result['language']} ({round(result['language_probability']*100, 1)}%)")
-    print(f"Temps calcul  : {result['processing_time']} secondes")
-    print("-" * 30)
+    # --- STEP 2: COLD RUN (First inference, includes CUDA warmup) ---
+    print("\n--- First Run (Cold) ---")
+    result1 = asr.process_audio(test_file)
+    print(f"Inference 1: {result1['processing_time']}s")
+
+    # --- STEP 3: WARM RUN (Real-world performance) ---
+    print("\n--- Second Run (Warm) ---")
+    result2 = asr.process_audio(test_file)
+    print(f"Inference 2: {result2['processing_time']}s")
