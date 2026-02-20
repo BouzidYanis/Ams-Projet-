@@ -28,3 +28,6 @@ PDF cours/
 *.onnx
 # Ignore the actual model storage if you ever link it locally
 ollama_storage/
+*.log
+nohup.out
+2

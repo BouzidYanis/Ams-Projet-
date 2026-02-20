@@ -18,7 +18,7 @@ app = FastAPI(title="Serveur de dialogue - Robot d'accueil")
 nlu = NLU()
 sessions = SessionStore()
 dialog = DialogManager(sessions)
-asr  = ASRModule(model_size="small")
+asr  = ASRModule(model_size="medium")
 class ParseRequest(BaseModel):
     text: str
     lang: Optional[str] = "fr"
