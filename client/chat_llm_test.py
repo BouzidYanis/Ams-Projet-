@@ -5,7 +5,8 @@ import sys
 
 # Configuration du serveur
 # URL = "http://192.168.1.74:8000/v1/respond"
-URL = "http://10.60.55.34:8000/v1/respond"
+# URL = "http://10.60.55.34:8000/v1/respond"
+URL = "http://127.0.0.1:8000/v1/respond"
 
 def test_chat():
     session_id = None

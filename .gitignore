@@ -21,3 +21,13 @@ temp_*.wav
 # Fichiers Excel et cours (souvent inutiles dans le code)
 *.xlsx
 PDF cours/
+
+# Large Language Model Weights
+*.gguf
+*.bin
+*.onnx
+# Ignore the actual model storage if you ever link it locally
+ollama_storage/
+*.log
+nohup.out
+2
