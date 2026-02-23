@@ -3,7 +3,8 @@
 Exemple de client minimal pour Pepper (Python 2.7.18).
 Envoie la transcription au serveur FastAPI et récupère la réponse du DialogManager.
 """
-
+import textwrap
+import io
 import time
 import datetime
 import os
@@ -47,7 +48,7 @@ if not os.path.exists(LOG_DIR):
     os.makedirs(LOG_DIR)
 
 # Le nom du fichier est fixé au démarrage du script
-LOG_FILE = os.path.join(LOG_DIR, "logs_{}.txt".format(datetime.datetime.now().strftime("%Y%m%d_%H%M%S")))
+LOG_FILE = os.path.join(LOG_DIR, "logs_{}.log".format(datetime.datetime.now().strftime("%Y%m%d_%H%M%S")))
 
 # 2. Création immédiate du fichier avec son header
 with open(LOG_FILE, "w") as f:
@@ -197,54 +198,80 @@ class PepperAppMain():
         self.session_id = None
     
     def _log_state(self, event_name="HEARTBEAT", user_text="", pepper_answer="", log_file=LOG_FILE):
-        """
-        Logs state every 0.5s or immediately if an event/text is provided.
-        """
-        import datetime
-        import time
-
-        # Initialisation du timer interne
-        if not hasattr(self, '_last_log_time'):
-            self._last_log_time = 0
-
-        current_time = time.time()
+        # Setup widths - Time compressed, Committed added
+        W_TS, W_EV, W_B, W_C, W_D, W_IDX, W_U, W_P, W_COM = 8, 15, 3, 3, 3, 8, 25, 25, 25
         
-        # On logue si c'est un événement spécial OU si 0.5s sont passées
+        if not hasattr(self, '_log_line_count'): self._log_line_count = 0
+        if not hasattr(self, '_last_log_time'): self._last_log_time = 0
+
         is_event = event_name != "HEARTBEAT" or user_text != "" or pepper_answer != ""
-        if not (is_event or (current_time - self._last_log_time) >= 0.5):
+        if not (is_event or (time.time() - self._last_log_time) >= 0.5): 
             return
+        self._last_log_time = time.time()
 
-        self._last_log_time = current_time
+        def safe_unicode(text):
+            """Force conversion to unicode without crashing on accents"""
+            if text is None: return u""
+            try:
+                if isinstance(text, str):
+                    return text.decode('utf-8')
+                return unicode(text)
+            except:
+                # Fallback for weird characters
+                return unicode(repr(text))
+
+        def get_header():
+            h = "| {0} | {1} | {2}|{3}|{4} | {5} | {6} | {7} | {8} |".format(
+                "TIME".ljust(W_TS), "EVENT".ljust(W_EV), "B".center(W_B),
+                "C".center(W_C), "D".center(W_D), "W_IDX".center(W_IDX),
+                "USER_TEXT".ljust(W_U), "PEPPER_ANS".ljust(W_P), "COMMITTED".ljust(W_COM))
+            sep = "-" * len(h)
+            return "\n" + sep + "\n" + h + "\n" + sep + "\n"
+
+        output = u""
+        if self._log_line_count % 30 == 0:
+            output += get_header()
         
+        # Process all text inputs safely
+        u_clean = safe_unicode(user_text).replace("\n", " ")
+        p_clean = safe_unicode(pepper_answer).replace("\n", " ")
+        c_clean = safe_unicode(getattr(self.asr, 'committed_transcript', "")).replace("\n", " ")
+        
+        u_lines = textwrap.wrap(u_clean, width=W_U)
+        p_lines = textwrap.wrap(p_clean, width=W_P)
+        c_lines = textwrap.wrap(c_clean, width=W_COM)
+        max_lines = max(len(u_lines), len(p_lines), len(c_lines), 1)
+
+        for i in range(max_lines):
+            ts = datetime.datetime.now().strftime("%H:%M:%S") if i == 0 else " " * W_TS
+            display_event = (event_name if i == 0 else "").ljust(W_EV)
+
+            if i == 0:
+                b = ("T" if getattr(self.asr, 'is_engaged', False) else "F").center(W_B)
+                c = ("T" if getattr(self.asr, 'check_if_silent', False) else "F").center(W_C)
+                d = ("T" if getattr(self.asr, 'is_listening', False) else "F").center(W_D)
+                idx = str(getattr(self.asr, 'wake_chunk_index', 0)).zfill(3).center(W_IDX)
+            else:
+                b, c, d, idx = " ".center(W_B), " ".center(W_C), " ".center(W_D), " ".center(W_IDX)
+            
+            u_txt = (u_lines[i] if i < len(u_lines) else u"").ljust(W_U)
+            p_txt = (p_lines[i] if i < len(p_lines) else u"").ljust(W_P)
+            com_txt = (c_lines[i] if i < len(c_lines) else u"").ljust(W_COM)
+
+            line = u"| {0} | {1} | {2}|{3}|{4} | {5} | {6} | {7} | {8} |\n".format(
+                ts, display_event, b, c, d, idx, u_txt, p_txt, com_txt)
+            output += line
+
+        if is_event:
+            output += u"-" * (len(line) - 1) + u"\n"
+        
+        self._log_line_count += 1
+        
+        # Write only to file, never to console terminal
         try:
-            # Récupération des états réels des flags (booléens)
-            b_engaged = self.asr.is_engaged
-            c_watching = self.asr.check_if_silent
-            d_listening = self.asr.is_listening
-            wake_idx   = self.asr.wake_chunk_index
-            
-            timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
-            
-            # Nettoyage du texte pour l'affichage en tableau
-            u_text = user_text.replace("\n", " ")[:30]
-            p_text = pepper_answer.replace("\n", " ")[:30]
-            
-            # On affiche T pour True et F pour False pour une lecture ultra-rapide
-            line = "{} | {} | B = {} | C = {} | D = {} | Idx:{} | User:{} | Pepper:{}\n".format(
-                timestamp,
-                event_name.ljust(12),
-                "T" if b_engaged else "F",
-                "T" if c_watching else "F",
-                "T" if d_listening else "F",
-                str(wake_idx).zfill(3),
-                u_text.ljust(15),
-                p_text.ljust(15)
-            )
-            
-            with open(log_file, "a") as f:
-                f.write(line)
-        except Exception:
-            # On reste discret en cas d'erreur pour ne pas bloquer le robot
+            with open(log_file, "ab") as f:
+                f.write(output.encode('utf-8', 'replace'))
+        except:
             pass
 
     def stop(self):
@@ -262,7 +289,7 @@ class PepperAppMain():
         #         for f in files:
         #             # On supprime uniquement les chunks individuels (ex: chunk_001.wav)
         #             # On GARDE les fichiers qui contiennent 'merged' ou 'wake'
-        #             if "chunk" in f.lower() and f.endswith(".wav"):
+        #             if "chunk" in sf.lower() and f.endswith(".wav"):
         #                 os.remove(os.path.join(TMP_DIR, f))
                 
         #         print(u"[MAIN] Chunks supprimés. Merged files conservés dans {}".format(TMP_DIR).encode('utf-8'))

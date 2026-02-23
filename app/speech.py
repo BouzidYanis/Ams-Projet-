@@ -128,6 +128,19 @@ class ASRModule:
             print("error : Fichier introuvable")
             return {"error": "Fichier introuvable"}
         
+        # --- THE FILTER IS HERE ---
+        # We call the VAD cleaner. It returns False if the chunk is just noise/silence.
+        has_speech = self.clean_audio_with_vad(audio_file_path)
+        
+        if not has_speech:
+            print(f"[ASR] Chunk {audio_file_path} ignoré : Uniquement du bruit ou silence.")
+            return {
+                "text": "", 
+                "is_reliable": False, 
+                "reason": "no_speech_detected"
+            }
+        # --------------------------
+
         start_time = time.time()
         print(f"[ASR] Début de transcription pour: {audio_file_path}")
 
@@ -157,7 +170,7 @@ class ASRModule:
             is_reliable = False  
 
         return {
-            "text": full_text if is_reliable else "ERROR_CONFIDENCE_LOW",
+            "text": full_text,# if is_reliable else "ERROR_CONFIDENCE_LOW",
             "language": info.language,
             "language_probability": info.language_probability,
             "avg_logprob": round(avg_logprob, 2),

@@ -19,7 +19,7 @@ PHONE_URL = "http://192.168.1.11:8080/audio.wav"
 
 
 WAKE_WORDS = [u"pepper", u"bonjour"]
-TRANSCRIPT_BATCH_SIZE = 5
+TRANSCRIPT_BATCH_SIZE = 1
 SILENCE_DELAY = 3 
 
 TMP_DIR = "/tmp/pepper"
@@ -75,6 +75,9 @@ class ASREngine:
             # On récupère le chemin RÉEL (ex: /tmp/chunk_0.wav)
             full_path = self.audio.record_chunk(name, duration=1)
             
+            # print("Arm A : Captured chunk {}, path: {}".format(name, full_path))
+
+
             if full_path:
                 payload = (count, full_path)
                 for q in self.queues.values():
@@ -192,12 +195,12 @@ class ASREngine:
                         # 3. CAS B : Seuil de silence atteint -> On flush et on arrête
                         if consecutive_silence >= self.silence_delay:
                             # S'il reste des morceaux dans le batch actuel, on les envoie
-                            if batch:
-                                filename = "D_flush_{}.wav".format(idx)
-                                merged = self.audio.merge_wavs(batch, filename)
-                                res = self.net.send_asr_file(merged)
-                                if res and res.get("text"):
-                                    active_transcript_list.append(res.get("text"))
+                            # if batch:
+                            #     filename = "D_flush_{}.wav".format(idx)
+                            #     merged = self.audio.merge_wavs(batch, filename)
+                            #     res = self.net.send_asr_file(merged)
+                            #     if res and res.get("text"):
+                            #         active_transcript_list.append(res.get("text"))
                             
                             # On concatène tout et on envoie au Main
                             if active_transcript_list:

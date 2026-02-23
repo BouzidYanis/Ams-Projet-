@@ -17,7 +17,7 @@ if not os.path.exists(TMP_DIR):
 
 VAD_FRAME_SIZE = 320 # 10ms à 16000Hz (16kHz * 0.01s * 2 bytes) = 320 bytes
 VAD_AGGRESIVENESS_3 = 3  # 0-3, plus c'est élevé, plus le VAD est strict
-SILENT_FRAMES_RUN = 1
+SILENT_FRAMES_RUN = 2
 
 SILENCHE_THRESHOLD = 800
 
@@ -309,17 +309,67 @@ class AudioSense:
         finally:
             wf.close()
     
-    def is_silent(self, wav_file, threshold=800):
-        if not os.path.exists(wav_file): return True
+    #Detect silence with simple RMS threshold
+    # def is_silent(self, wav_file, threshold=800):
+    #     if not os.path.exists(wav_file): return True
+    #     wf = wave.open(wav_file, 'rb')
+    #     try:
+    #         params = wf.getparams()
+    #         frames = wf.readframes(params[3])
+    #         if not frames: return True
+    #         return audioop.rms(frames, params[1]) < threshold
+    #     finally:
+    #         wf.close()
+
+    #Detect silence with VAD
+    def is_silent(self, wav_file, speech_ratio_threshold=0.15):
+        """
+        Scans the WAV file using WebRTC VAD.
+        Returns True if the ratio of speech frames is below the threshold.
+        """
+        if not os.path.exists(wav_file): 
+            return True
+            
         wf = wave.open(wav_file, 'rb')
         try:
-            params = wf.getparams()
-            frames = wf.readframes(params[3])
-            if not frames: return True
-            return audioop.rms(frames, params[1]) < threshold
+            # We must use 16000Hz for WebRTC VAD
+            rate = wf.getframerate()
+            if rate not in [8000, 16000, 32000, 48000]:
+                # If the file isn't VAD-compatible, fallback to RMS
+                params = wf.getparams()
+                frames = wf.readframes(params[3])
+                return audioop.rms(frames, params[1]) < 800
+
+            # VAD settings: 30ms frames are most stable
+            frame_duration_ms = 30
+            # n_bytes = sample_rate * duration_sec * sampwidth * channels
+            n = int(rate * (frame_duration_ms / 1000.0) * 2 * 1) 
+            
+            frames_count = 0
+            speech_frames = 0
+            
+            while True:
+                chunk = wf.readframes(int(rate * frame_duration_ms / 1000.0))
+                if not chunk or len(chunk) < n:
+                    break
+                
+                frames_count += 1
+                if self.vad.is_speech(chunk, rate):
+                    speech_frames += 1
+            
+            if frames_count == 0: 
+                return True
+                
+            actual_ratio = float(speech_frames) / frames_count
+            
+            # Debug log (optional)
+            # print("[VAD_CHECK] Speech Ratio: {:.2f} (Threshold: {})".format(actual_ratio, speech_ratio_threshold))
+            
+            # If less than 15% of the file is speech, treat as silent/noise
+            return actual_ratio < speech_ratio_threshold
+
         finally:
             wf.close()
-
     
     def merge_wavs(self, file_list, output_name):
         #print("merge_wavs")

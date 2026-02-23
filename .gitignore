@@ -32,5 +32,3 @@ ollama_storage/
 nohup.out
 2
 client/client/
-temp.py
-nlu_test.py
