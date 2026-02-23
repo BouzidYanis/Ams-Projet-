@@ -27,10 +27,18 @@ def setup_cuda_path():
 if sys.platform == "win32":
     setup_cuda_path()
 
+
+import webrtcvad
 from faster_whisper import WhisperModel
 
+# --- CONFIGURATION ---
+LOGPROB_THRESHOLD = -2.0  # More permissive (was -1.0)
+NOSPEECH_THRESHOLD = 0.8   # More permissive (was 0.6)
+VAD_AGGRESSIVENESS = 2    # 1 (relaxed) to 3 (aggressive)
+PADDING_FRAMES = 10       # ~300ms of buffer around speech
+
 class ASRModule:
-    def __init__(self, model_size="medium", logprob_threshold=-1.0, nospeech_threshold=0.6):
+    def __init__(self, model_size="medium", logprob_threshold=LOGPROB_THRESHOLD, nospeech_threshold=NOSPEECH_THRESHOLD):
         # On force l'utilisation du processeur (cpu) si vous n'avez pas de GPU NVIDIA
         print(f"[ASR] Chargement du modèle Whisper ({model_size})...")
         # "int8" permet de rendre le modèle encore plus léger
@@ -45,6 +53,8 @@ class ASRModule:
             local_files_only=True    # Set to True only AFTER the first download to work offline
         )
         
+        self.vad = webrtcvad.Vad(VAD_AGGRESSIVENESS)
+
         self.logprob_threshold = logprob_threshold # Plus bas : modèle trop incertain
         self.nospeech_threshold = nospeech_threshold # Plus haut : Plus de tolérance au bruit
     
@@ -59,28 +69,45 @@ class ASRModule:
                 n_channels = wf.getnchannels()
                 sampwidth = wf.getsampwidth()
                 frames = wf.readframes(wf.getnframes())
+                params = wf.getparams()
 
             # Le VAD nécessite obligatoirement du 16-bit PCM Mono
             if n_channels != 1 or sampwidth != 2:
                 print("[VAD] Format incompatible (doit être Mono 16-bit)")
                 return False
-
+            
             frame_duration_ms = 30
             frame_size = int(sample_rate * (frame_duration_ms / 1000.0) * 2)
 
-            voiced_frames = []
+            # 1. Découpage et détection des indices de voix
+            # On stocke les indices des chunks où la voix est présente
+            speech_indices = []
+            chunk_list = []
+           
             for i in range(0, len(frames), frame_size):
                 chunk = frames[i:i + frame_size]
                 if len(chunk) < frame_size:
                     break
+                
+                chunk_list.append(chunk)
                 if self.vad.is_speech(chunk, sample_rate):
-                    voiced_frames.append(chunk)
+                    # On enregistre l'index du chunk actuel (0, 1, 2...)
+                    speech_indices.append(len(chunk_list) - 1)
             
-            if not voiced_frames:
+            if not speech_indices:
                 print("[VAD] Aucun segment de voix détecté.")
-                # On ne vide pas le fichier pour éviter que Whisper crash, 
-                # mais on sait qu'il sera peu fiable.
                 return False
+            
+            # 2. Détermination de la plage avec Padding (Pre-roll et Post-roll)
+            # PADDING_FRAMES = 10 (environ 300ms de sécurité)
+            padding_frames = 10
+
+            start_index = max(0, speech_indices[0] - padding_frames)
+            end_index = min(len(chunk_list) - 1, speech_indices[-1] + padding_frames)
+            
+            # 3. Extraction du bloc final (on garde tout entre start et end)
+            # Cela respecte votre logique "voiced_frames" mais en bloc continu
+            voiced_frames = chunk_list[start_index : end_index + 1]
 
             # On réécrit le fichier avec uniquement la voix
             with wave.open(file_path, 'wb') as wf:

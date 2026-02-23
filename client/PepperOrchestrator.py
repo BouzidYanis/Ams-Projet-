@@ -11,6 +11,8 @@ import os
 import paramiko  # pour récupérer le fichier depuis le robot via SCP/SFTP
 import qi
 
+TMP_DIR = "/tmp/pepper"
+
 # Configuration
 PEPPER_IP = "192.168.13.230"
 PEPPER_PORT = 9559
@@ -80,7 +82,7 @@ class PepperAudioCapture:
             Chemin local du fichier téléchargé, ou None en cas d'erreur.
         """
         remote_file = self.remote_path + filename
-        local_path = os.path.join("/tmp", filename)
+        local_path = os.path.join(TMP_DIR, filename)
 
         try:
             # Démarrer l'enregistrement
