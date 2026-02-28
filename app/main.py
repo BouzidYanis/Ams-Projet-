@@ -49,6 +49,8 @@ class ReservationRequest(BaseModel):
     salle: str
     creneau: Creneau
 
+
+
 @app.post("/v1/asr")
 async def transcribe_audio(file: UploadFile = File(...)):
     """ Endpoint pour envoyer l'audio Pepper et renvoyer le texte transcrit """

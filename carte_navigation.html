@@ -17,7 +17,6 @@
             overflow: hidden;
         }
         
-        /* Conteneur de la carte */
         .map-container {
             position: relative;
             width: 100%;
@@ -30,14 +29,8 @@
             height: 100%;
         }
         
-        /* Styles des salles */
         .salle {
             cursor: pointer;
-            transition: all 0.3s;
-        }
-        
-        .salle:hover rect {
-            filter: brightness(1.3);
         }
         
         .salle-accueil rect {
@@ -46,7 +39,6 @@
         
         .salle-destination rect {
             fill: #dc3545;
-            animation: pulse 2s infinite;
         }
         
         .salle-normale rect {
@@ -61,45 +53,6 @@
             fill: #5a5a5a;
         }
         
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.6; }
-        }
-        
-        /* Trajet animé */
-        .trajet {
-            fill: none;
-            stroke: #00bfff;
-            stroke-width: 10;
-            stroke-linecap: round;
-            stroke-linejoin: round;
-            stroke-dasharray: 2000;
-            stroke-dashoffset: 2000;
-            animation: drawPath 4s ease-in-out forwards;
-            filter: drop-shadow(0 0 8px rgba(0, 191, 255, 0.8));
-        }
-        
-        @keyframes drawPath {
-            to {
-                stroke-dashoffset: 0;
-            }
-        }
-        
-        /* Marqueur animé */
-        .marker {
-            filter: drop-shadow(0 0 5px rgba(40, 167, 69, 0.8));
-        }
-        
-        .vous-etes-ici {
-            animation: blink 1.5s infinite;
-        }
-        
-        @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
-        }
-        
-        /* Texte des salles */
         .salle-text {
             fill: white;
             font-size: 16px;
@@ -119,91 +72,82 @@
 <body>
     <div class="map-container">
         <svg id="plan-svg" viewBox="0 0 920 460" xmlns="http://www.w3.org/2000/svg">
-            <!-- Fond noir -->
             <rect x="0" y="0" width="920" height="460" fill="#1a1a1a"/>
             
-            <!-- SALLE NATATION (à gauche) -->
             <g class="salle salle-normale" data-salle="natation">
-                <rect x="10" y="120" width="180" height="220" class="salle-normale"/>
+                <rect x="10" y="120" width="180" height="220"/>
                 <text x="100" y="220" class="salle-text">SALLE</text>
                 <text x="100" y="240" class="salle-text">NATATION</text>
             </g>
             
-            <!-- ESCALIER 2 (en haut à gauche) -->
             <g class="escalier-zone" data-zone="escalier_2">
                 <rect x="200" y="10" width="90" height="120" class="escalier"/>
                 <text x="245" y="65" class="couloir-text">ESCALIER</text>
                 <text x="245" y="80" class="couloir-text">2</text>
             </g>
             
-            <!-- SALLE B (en haut, à gauche du centre) -->
             <g class="salle salle-normale" data-salle="salle_b">
-                <rect x="290" y="10" width="160" height="170" class="salle-normale"/>
+                <rect x="290" y="10" width="160" height="170"/>
                 <text x="370" y="95" class="salle-text">SALLE B</text>
             </g>
             
-            <!-- SALLE A (en haut, centre) -->
             <g class="salle salle-normale" data-salle="salle_a">
-                <rect x="450" y="10" width="160" height="170" class="salle-normale"/>
+                <rect x="450" y="10" width="160" height="170"/>
                 <text x="530" y="95" class="salle-text">SALLE A</text>
             </g>
             
-            <!-- ACCUEIL (en haut à droite) -->
             <g class="salle salle-accueil" data-salle="accueil">
-                <rect x="610" y="10" width="200" height="170" class="salle-accueil"/>
+                <rect x="610" y="10" width="200" height="170"/>
                 <text x="710" y="95" class="salle-text">ACCUEIL</text>
             </g>
             
-            <!-- COULOIR PRINCIPAL (horizontal) -->
             <rect x="190" y="190" width="620" height="80" class="couloir"/>
             <text x="500" y="235" class="couloir-text">COULOIR</text>
             
-            <!-- ENTRÉE (à droite) -->
             <g class="zone-entree" data-zone="entree">
                 <rect x="810" y="190" width="110" height="80" fill="#2a5298"/>
                 <text x="865" y="235" class="couloir-text">ENTRÉE</text>
             </g>
             
-            <!-- SALLE D (en bas à gauche) -->
             <g class="salle salle-normale" data-salle="salle_d">
-                <rect x="290" y="280" width="160" height="170" class="salle-normale"/>
+                <rect x="290" y="280" width="160" height="170"/>
                 <text x="370" y="365" class="salle-text">SALLE D</text>
             </g>
             
-            <!-- SALLE C (en bas au centre) -->
             <g class="salle salle-normale" data-salle="salle_c">
-                <rect x="450" y="280" width="160" height="170" class="salle-normale"/>
+                <rect x="450" y="280" width="160" height="170"/>
                 <text x="530" y="365" class="salle-text">SALLE C</text>
             </g>
             
-            <!-- ESCALIER 1 (en bas à droite) -->
             <g class="escalier-zone" data-zone="escalier_1">
                 <rect x="620" y="360" width="70" height="90" class="escalier"/>
                 <text x="655" y="395" class="couloir-text">ESCALIER</text>
                 <text x="655" y="415" class="couloir-text">1</text>
             </g>
             
-            <!-- Conteneur pour le trajet (sera ajouté dynamiquement) -->
             <g id="trajet-container"></g>
         </svg>
     </div>
     
     <script>
-        // Base de données des salles
         var salles = {
-            accueil: { position: {x: 710, y: 95} },
-            salle_a: { position: {x: 530, y: 95} },
-            salle_b: { position: {x: 370, y: 95} },
-            salle_c: { position: {x: 530, y: 365} },
-            salle_d: { position: {x: 370, y: 365} },
+            accueil:  { position: {x: 710, y: 95} },
+            salle_a:  { position: {x: 530, y: 95} },
+            salle_b:  { position: {x: 370, y: 95} },
+            salle_c:  { position: {x: 530, y: 365} },
+            salle_d:  { position: {x: 370, y: 365} },
             natation: { position: {x: 100, y: 230} }
         };
+
+        var aliases = {
+            "salle_natation": "natation",
+            "salle natation": "natation",
+            "piscine": "natation"
+        };
     
-        // Lecture paramètre URL compatible ancien navigateur
         function getParam(name) {
             var query = window.location.search.substring(1);
             var pairs = query.split("&");
-    
             for (var i = 0; i < pairs.length; i++) {
                 var pair = pairs[i].split("=");
                 if (decodeURIComponent(pair[0]) === name) {
@@ -213,47 +157,44 @@
             return null;
         }
     
-        // Normalisation simple
         function normalizeDestinationKey(raw) {
             if (!raw) return null;
-    
-            raw = raw.toLowerCase();
-            raw = raw.replace(/ /g, "_");
-    
-            if (salles[raw]) {
-                return raw;
+            raw = raw.toLowerCase().replace(/^\s+|\s+$/g, "");
+
+            var key = raw.replace(/ /g, "_");
+            if (salles[key]) return key;
+            if (salles[raw]) return raw;
+            if (aliases[raw]) return aliases[raw];
+            if (aliases[key]) return aliases[key];
+
+            for (var k in salles) {
+                if (salles.hasOwnProperty(k)) {
+                    if (raw.indexOf(k) !== -1 || k.indexOf(raw.replace(/_/g, "")) !== -1) {
+                        return k;
+                    }
+                }
             }
-    
             return null;
         }
     
         function naviguerVers(salle) {
-            if (!salles[salle]) {
-                return;
-            }
-    
-            // Reset classes
+            if (!salles[salle]) return;
+
             var elements = document.getElementsByClassName("salle");
             for (var i = 0; i < elements.length; i++) {
-                elements[i].classList.remove("salle-destination");
-    
-                if (elements[i].getAttribute("data-salle") !== "accueil") {
-                    elements[i].classList.add("salle-normale");
-                }
+                elements[i].setAttribute("class", "salle salle-normale");
             }
-    
-            // Marquer destination
-            var salleElement = document.querySelector('[data-salle="' + salle + '"]');
-            if (salleElement) {
-                salleElement.classList.remove("salle-normale");
-                salleElement.classList.add("salle-destination");
-            }
-    
+
+            var accueilEl = document.querySelector('[data-salle="accueil"]');
+            if (accueilEl) accueilEl.setAttribute("class", "salle salle-accueil");
+
+            var salleEl = document.querySelector('[data-salle="' + salle + '"]');
+            if (salleEl) salleEl.setAttribute("class", "salle salle-destination");
+
             dessinerTrajet("accueil", salle);
         }
     
         function dessinerTrajet(depart, arrivee) {
-    
             var trajetContainer = document.getElementById("trajet-container");
             trajetContainer.innerHTML = "";
     
@@ -270,7 +211,6 @@
                 points.push({x: posArrivee.x, y: 180});
             } else {
                 points.push({x: posArrivee.x, y: 230});
-    
                 if (arrivee === "natation") {
                     points.push({x: 190, y: 230});
                     points.push({x: 190, y: posArrivee.y});
@@ -278,21 +218,38 @@
                     points.push({x: posArrivee.x, y: 280});
                 }
             }
-    
             points.push(posArrivee);
-    
-            var path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-            var d = "M " + points[0].x + " " + points[0].y;
-    
-            for (var i = 1; i < points.length; i++) {
-                d += " L " + points[i].x + " " + points[i].y;
+
+            // ─── Dessiner segment par segment avec animation JS ───
+            var SEGMENT_DURATION = 600; // ms par segment
+
+            for (var s = 0; s < points.length - 1; s++) {
+                (function(index) {
+                    setTimeout(function() {
+                        var line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                        line.setAttribute("x1", points[index].x);
+                        line.setAttribute("y1", points[index].y);
+                        line.setAttribute("x2", points[index + 1].x);
+                        line.setAttribute("y2", points[index + 1].y);
+                        line.setAttribute("stroke", "#00bfff");
+                        line.setAttribute("stroke-width", "10");
+                        line.setAttribute("stroke-linecap", "round");
+                        line.setAttribute("stroke-linejoin", "round");
+                        // Glow effect via un deuxième trait plus large et semi-transparent
+                        var glow = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                        glow.setAttribute("x1", points[index].x);
+                        glow.setAttribute("y1", points[index].y);
+                        glow.setAttribute("x2", points[index + 1].x);
+                        glow.setAttribute("y2", points[index + 1].y);
+                        glow.setAttribute("stroke", "rgba(0, 191, 255, 0.3)");
+                        glow.setAttribute("stroke-width", "20");
+                        glow.setAttribute("stroke-linecap", "round");
+
+                        trajetContainer.appendChild(glow);
+                        trajetContainer.appendChild(line);
+                    }, index * SEGMENT_DURATION);
+                })(s);
             }
-    
-            path.setAttribute("d", d);
-            path.setAttribute("class", "trajet");
-            path.setAttribute("id", "main-path");
-    
-            trajetContainer.appendChild(path);
         }
     
         window.naviguerVers = naviguerVers;
@@ -300,12 +257,10 @@
         window.onload = function() {
             var destinationRaw = getParam("destination");
             var destination = normalizeDestinationKey(destinationRaw);
-    
             if (destination) {
                 naviguerVers(destination);
             }
         };
     </script>
-    
 </body>
 </html>

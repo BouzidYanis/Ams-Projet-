@@ -669,7 +669,11 @@ class DialogManager:
             # Initialiser les slots et démarrer le flux
             self._set_booking_slots(session_id, {})
             return self._handle_booking_flow(session_id, intent, entities, user_text)
-
+        # --- Greeting ---
+        if intent == "greeting":
+            actions = {
+                "type": "face_recognition",
+            }
         # --- Navigate ---
         if intent == "navigate":
             locations = entities.get("location", [])

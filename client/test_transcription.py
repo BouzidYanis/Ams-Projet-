@@ -10,7 +10,7 @@ import time
 from ALAudioRecorder import PepperAudioCapture
 
 # Configuration
-PEPPER_IP = "192.168.13.230"
+PEPPER_IP = "192.168.13.213"
 PEPPER_PORT = 9559
 ASR_URL = "http://localhost:8001/v1/asr"
 
@@ -30,9 +30,6 @@ def main():
     audio = PepperAudioCapture(
         session,
         asr_url=ASR_URL,
-        robot_ip=PEPPER_IP,
-        robot_user="nao",
-        robot_pass="nao"
     )
 
     # 3. Faire dire au robot qu'il écoute
@@ -74,14 +71,18 @@ def main():
                 text = result.get("text", "")
                 language = result.get("language", "??")
 
+                # Encoder pour l'affichage Python 2.7
+                text_display = text.encode("utf-8") if isinstance(text, unicode) else text
+                lang_display = language.encode("utf-8") if isinstance(language, unicode) else language
+
                 print("\n" + "-" * 40)
-                print("TRANSCRIPTION : \"{}\"".format(text))
-                print("LANGUE        : {}".format(language))
+                print("TRANSCRIPTION : \"{}\"".format(text_display))
+                print("LANGUE        : {}".format(lang_display))
                 print("-" * 40)
 
                 # 6. Le robot répète ce qu'il a compris
                 if text.strip():
-                    tts.say("Vous avez dit : {}".format(text.encode("utf-8")))
+                    tts.say("Vous avez dit : {}".format(text_display))
                 else:
                     tts.say("Je n'ai rien compris, pouvez-vous répéter ?")
                     print("[WARNING] Transcription vide.")
