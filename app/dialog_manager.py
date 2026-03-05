@@ -11,6 +11,8 @@ from app.navigation import get_navigation_instructions
 import os
 import json
 import random
+import re
+from datetime import datetime, timedelta
 from .tools import parse_heure_to_minutes, parse_minutes_to_heure
 from app.DB_access import DatabaseMongo
 
@@ -85,16 +87,29 @@ class DialogManager:
 
     def _is_room_booked(self, salle: str, jour: str, heure_debut: str,heure_fin:str) -> bool:
         """Vérifie dans la base de données si la salle est déjà réservée pour le créneau donné."""
-        acitivites_planinng = db.get_collection("activite").find_one(
+        #verifier le planning des activites 
+        activites_planning = db.get_collection("activite").find_one(
             {
-                "planning": {"$elemMatch": {"salle": salle, "jour": jour,
-                                             "$or": [
-                                                        {"heure_debut": {"$lt": heure_fin, "$gte": heure_debut}},
-                                                        {"heure_fin": {"$gt": heure_debut, "$lte": heure_fin}},
-                                                        {"$and": [{"heure_debut": {"$lte": heure_debut}}, {"heure_fin": {"$gte": heure_fin}}]},
-                                                     ]
-            }}})
-        if acitivites_planinng:
+                "planning": {
+                    "$elemMatch": {
+                        "salle": salle,
+                        "jour": jour,
+                        "$or": [
+                            # Le créneau existant commence pendant le nouveau
+                            {"heure_debut": {"$gte": heure_debut, "$lt": heure_fin}},
+                            # Le créneau existant finit pendant le nouveau
+                            {"heure_fin": {"$gt": heure_debut, "$lte": heure_fin}},
+                            # Le créneau existant englobe entièrement le nouveau
+                            {"$and": [
+                                {"heure_debut": {"$lte": heure_debut}},
+                                {"heure_fin": {"$gte": heure_fin}}
+                            ]},
+                        ]
+                    }
+                }
+            }
+        )
+        if activites_planning:
             return True
         db_query = {
             "salle": salle,
@@ -108,6 +123,110 @@ class DialogManager:
         }
         existing = db.get_collection("reservations").find_one(db_query)
         return existing is not None
+    
+    def is_within_opening_hours(self, jour:str, heure:str):
+        """Vérifie si le créneau demandé est dans les horaires d'ouverture."""
+       #verifier les horaires d'ouverture de la salle
+        horaires_salle = db.get_collection("config").find_one({"type":"horraires"},{"_id":0, "type":0})
+        heure_ouverture = horaires_salle["horaire_ouverture"] # type: ignore
+        heure_fermeture = horaires_salle["horaire_fermeture"] # type: ignore
+        print("horaires_salle", horaires_salle)
+        heure_avant_fermeture = datetime.strptime(heure_fermeture,"%H:%M")
+        heure_avant_fermeture = heure_avant_fermeture - timedelta(hours=1)
+        heure_avant_fermeture = heure_avant_fermeture.strftime("%H:%M")
+        if heure < heure_ouverture or heure > heure_avant_fermeture:
+            return False
+        else :
+            return True
+        
+    def _normalize_jour_to_date(self, jour_raw: str) -> str:
+        """
+        Convertit un jour brut (ex: 'mercredi', 'demain', '15 mars', '12/03') 
+        en format 'JJ/MM/YYYY'.
+        Si c'est un nom de jour de la semaine, on cherche la prochaine occurrence.
+        """
+        today = datetime.now()
+        jour_lower = jour_raw.lower().strip()
+
+        # Mapping des jours de la semaine (lundi=0, dimanche=6)
+        JOURS_SEMAINE = {
+            "lundi": 0, "mardi": 1, "mercredi": 2, "jeudi": 3,
+            "vendredi": 4, "samedi": 5, "dimanche": 6,
+        }
+
+        MOIS_FR = {
+            "janvier": 1, "février": 2, "mars": 3, "avril": 4,
+            "mai": 5, "juin": 6, "juillet": 7, "août": 8,
+            "septembre": 9, "octobre": 10, "novembre": 11, "décembre": 12,
+        }
+
+        # --- "aujourd'hui" ---
+        if re.search(r"aujourd['\u2019]?hui", jour_lower):
+            return today.strftime("%d/%m/%Y")
+
+        # --- "demain" ---
+        if "demain" in jour_lower and "après" not in jour_lower:
+            target = today + timedelta(days=1)
+            return target.strftime("%d/%m/%Y")
+
+        # --- "après-demain" ---
+        if re.search(r"après[\s-]?demain", jour_lower):
+            target = today + timedelta(days=2)
+            return target.strftime("%d/%m/%Y")
+
+        # --- Nom de jour de la semaine (ex: "mercredi", "lundi prochain") ---
+        for nom_jour, weekday_num in JOURS_SEMAINE.items():
+            if nom_jour in jour_lower:
+                # Calculer le nombre de jours jusqu'au prochain occurrence
+                days_ahead = weekday_num - today.weekday()
+                if days_ahead <= 0:
+                    # Le jour est déjà passé cette semaine (ou c'est aujourd'hui)
+                    # → on prend la semaine prochaine
+                    days_ahead += 7
+                # Si l'utilisateur dit "lundi prochain" et qu'on est lundi,
+                # on va à la semaine prochaine (days_ahead = 7)
+                if "prochain" in jour_lower and days_ahead < 7:
+                    days_ahead += 7
+                target = today + timedelta(days=days_ahead)
+                return target.strftime("%d/%m/%Y")
+
+        # --- Format "15 mars" ou "15 mars 2026" ---
+        m = re.search(r'(\d{1,2})\s+(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)(?:\s+(\d{4}))?', jour_lower)
+        if m:
+            day = int(m.group(1))
+            month = MOIS_FR[m.group(2)]
+            year = int(m.group(3)) if m.group(3) else today.year
+            # Si la date est déjà passée cette année, prendre l'année prochaine
+            try:
+                target = datetime(year, month, day)
+                if target < today and not m.group(3):
+                    target = datetime(year + 1, month, day)
+                return target.strftime("%d/%m/%Y")
+            except ValueError:
+                pass  # Date invalide, on continue
+
+        # --- Format "JJ/MM" ou "JJ/MM/YYYY" ou "JJ-MM-YYYY" ---
+        m = re.search(r'(\d{1,2})[/\-](\d{1,2})(?:[/\-](\d{2,4}))?', jour_lower)
+        if m:
+            day = int(m.group(1))
+            month = int(m.group(2))
+            year_str = m.group(3)
+            if year_str:
+                year = int(year_str)
+                if year < 100:
+                    year += 2000  # "26" → 2026
+            else:
+                year = today.year
+            try:
+                target = datetime(year, month, day)
+                if target < today and not year_str:
+                    target = datetime(year + 1, month, day)
+                return target.strftime("%d/%m/%Y")
+            except ValueError:
+                pass
+
+        # --- Fallback : retourner tel quel (ne devrait pas arriver) ---
+        return jour_raw
 
     def _is_booking_in_progress(self, session_id: str) -> bool:
         session = self.sessions.get(session_id)
@@ -143,7 +262,7 @@ class DialogManager:
         for pattern in date_patterns:
             m = re.search(pattern, raw_text, re.IGNORECASE)
             if m:
-                found["jour"] = m.group(0)
+                found["jour"] = self._normalize_jour_to_date(m.group(0))
                 break
         # si spaCy a trouvé un temps et qu'on n'a pas encore de jour
         if "jour" not in found and times:
@@ -154,6 +273,34 @@ class DialogManager:
                     break
 
         # --- Heure ---
+        # Mapping des nombres en lettres vers chiffres
+        NOMBRES_FR = {
+            "une": 1, "un": 1, "deux": 2, "trois": 3, "quatre": 4,
+            "cinq": 5, "six": 6, "sept": 7, "huit": 8, "neuf": 9,
+            "dix": 10, "onze": 11, "douze": 12, "treize": 13,
+            "quatorze": 14, "quinze": 15, "seize": 16,
+            "dix-sept": 17, "dix sept": 17, "dix-huit": 18, "dix huit": 18,
+            "dix-neuf": 19, "dix neuf": 19, "vingt": 20,
+            "vingt-et-une": 21, "vingt et une": 21, "vingt-et-un": 21, "vingt et un": 21,
+            "vingt-deux": 22, "vingt deux": 22, "vingt-trois": 23, "vingt trois": 23,
+            "midi": 12, "minuit": 0,
+        }
+
+        MINUTES_FR = {
+            "cinq": 5, "dix": 10, "quinze": 15, "vingt": 20,
+            "vingt-cinq": 25, "vingt cinq": 25, "trente": 30,
+            "trente-cinq": 35, "trente cinq": 35, "quarante": 40,
+            "quarante-cinq": 45, "quarante cinq": 45, "cinquante": 50,
+            "cinquante-cinq": 55, "cinquante cinq": 55,
+        }
+
+        # Construire les patterns pour les nombres en lettres
+        nombres_heures = "|".join(sorted(NOMBRES_FR.keys(), key=len, reverse=True))
+        nombres_minutes = "|".join(sorted(MINUTES_FR.keys(), key=len, reverse=True))
+
+        text_lower = raw_text.lower()
+
+        # Patterns pour heures en chiffres (existants)
         hour_patterns = [
             r'\b(\d{1,2})\s*:\s*(\d{2})\b',                # 10:00, 18:30
             r'\b(\d{1,2})\s*[hH]\s*(\d{1,2})\b',            # 19h30, 19H00
@@ -169,6 +316,49 @@ class DialogManager:
                     mins = int(m.group(2))
                 found["heure"] = "{:02d}:{:02d}".format(h, mins)
                 break
+
+        # Si pas trouvé en chiffres, chercher les heures en lettres
+        if "heure" not in found:
+            # "midi/minuit [et] [minutes]"
+            m = re.search(r'\b(midi|minuit)(?:\s+et\s+(' + nombres_minutes + r'))?\b', text_lower)
+            if m:
+                h = NOMBRES_FR[m.group(1)]
+                mins = MINUTES_FR.get(m.group(2), 0) if m.group(2) else 0
+                found["heure"] = "{:02d}:{:02d}".format(h, mins)
+
+        if "heure" not in found:
+            # "[nombre] heure(s) [et/moins] [minutes] [du matin/de l'après-midi/du soir]"
+            pattern_lettres = (
+                r'\b(' + nombres_heures + r')\s*heures?'
+                r'(?:\s+et\s+(' + nombres_minutes + r'))?'
+                r'(?:\s+(?:du\s+matin|de\s+l[\'\u2019]?après[\s-]?midi|du\s+soir))?'
+            )
+            m = re.search(pattern_lettres, text_lower)
+            if m:
+                h = NOMBRES_FR[m.group(1)]
+                mins = MINUTES_FR.get(m.group(2), 0) if m.group(2) else 0
+                # Ajuster pour "de l'après-midi" ou "du soir"
+                if re.search(r'de\s+l[\'\u2019]?après[\s-]?midi', text_lower) and h < 12:
+                    h += 12
+                elif re.search(r'du\s+soir', text_lower) and h < 12:
+                    h += 12
+                found["heure"] = "{:02d}:{:02d}".format(h, mins)
+
+        if "heure" not in found:
+            # "à [nombre]" sans le mot "heure" — ex: "à deux du matin"
+            pattern_a = (
+                r'\bà\s+(' + nombres_heures + r')'
+                r'(?:\s+(?:du\s+matin|de\s+l[\'\u2019]?après[\s-]?midi|du\s+soir))?'
+            )
+            m = re.search(pattern_a, text_lower)
+            if m:
+                h = NOMBRES_FR[m.group(1)]
+                if re.search(r'de\s+l[\'\u2019]?après[\s-]?midi', text_lower) and h < 12:
+                    h += 12
+                elif re.search(r'du\s+soir', text_lower) and h < 12:
+                    h += 12
+                found["heure"] = "{:02d}:{:02d}".format(h, 0)
+
         # si spaCy a trouvé un temps et qu'on n'a pas encore d'heure
         if "heure" not in found and times:
             for t in times:
@@ -259,6 +449,22 @@ class DialogManager:
                 "current_slots": slots,
             }
             return question, actions
+        
+        # ─── Vérification des horaires d'ouverture ───
+        is_open = self.is_within_opening_hours(slots["jour"], slots["heure"])
+        if not is_open:
+            # Effacer uniquement l'heure pour que l'utilisateur en choisisse une autre
+            slots.pop("heure", None)
+            self._set_booking_slots(session_id, slots)
+            opening_msg = "Désolé, la salle n'est pas ouverte à ce moment-là. "
+            self._append_message(session_id, "assistant", opening_msg)
+            actions = {
+                "type": "booking_slot_filling",
+                "missing_slot": "heure",
+                "current_slots": slots,
+                "reason": "outside_opening_hours",
+            }
+            return opening_msg, actions
 
         # Tous les slots sont remplis !
         # Cas spécial : on a une activité mais pas de salle → chercher les salles disponibles
@@ -374,9 +580,11 @@ class DialogManager:
             reservation_data = {
                 "salle": salle_id,
                 "activite": activite,
-                "jour": jour,
-                "heure_debut": heure,
-                "heure_fin": heure_fin,
+                "creneau":{
+                    "jour": jour,
+                    "heure_debut": heure,
+                    "heure_fin": heure_fin,
+                },
                 "statut": "confirmee",
             }
             db.get_collection("reservations").insert_one(reservation_data)
