@@ -30,10 +30,11 @@ class ParseResponse(BaseModel):
     confidence: float
     entities: Dict[str, Any]
 
-class RespondRequest(BaseModel):
+class RespondResponse(BaseModel):
     text: str
-    lang: Optional[str] = "fr"
-    session_id: Optional[str] = None
+    actions: Dict[str, Any]
+    session_id: str
+
 
 class RespondRequest(BaseModel):
     text: str
