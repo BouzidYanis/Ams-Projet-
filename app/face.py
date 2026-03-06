@@ -190,6 +190,8 @@ FACE_TOLERANCE = float(os.getenv("FACE_TOLERANCE", "0.6"))
 PHOTO_FETCH_TIMEOUT_SECONDS = float(os.getenv("PHOTO_FETCH_TIMEOUT_SECONDS", "5"))
 PHOTO_USER_AGENT = os.getenv("PHOTO_USER_AGENT", "FaceVerificationAPI/1.0")
 
+# FIX: Racine du projet (Ams-Projet-/)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 # --- Models ---
 class FaceMatch(BaseModel):
@@ -218,9 +220,19 @@ def _load_image_from_upload(upload: UploadFile):
     except Exception:
         raise HTTPException(status_code=400, detail="Format d'image invalide")
 
+
 def _load_image_from_photo_ref(ref: str) -> np.ndarray:
     if not ref or not isinstance(ref, str):
         raise ValueError("Référence photo invalide")
+
+    # Cas 1: base64 encodé (data:image/jpeg;base64,...)
+    if ref.startswith("data:image"):
+        import base64
+        header, b64data = ref.split(",", 1)
+        img_bytes = base64.b64decode(b64data)
+        return face_recognition.load_image_file(io.BytesIO(img_bytes))
+
+    # Cas 2: URL http(s)
     parsed = urlparse(ref)
     if parsed.scheme in ("http", "https"):
         req = Request(ref, headers={"User-Agent": PHOTO_USER_AGENT})
@@ -229,9 +241,21 @@ def _load_image_from_photo_ref(ref: str) -> np.ndarray:
         if not content:
             raise ValueError("Image distante vide")
         return face_recognition.load_image_file(io.BytesIO(content))
-    if not os.path.exists(ref):
-        raise FileNotFoundError(f"Photo introuvable: {ref}")
-    return face_recognition.load_image_file(ref)
+
+    # Cas 3: chemin absolu existant
+    if os.path.isabs(ref) and os.path.exists(ref):
+        return face_recognition.load_image_file(ref)
+
+    # Cas 4: chemin relatif → résoudre depuis PROJECT_ROOT
+    # ex: "images/utilisateurs/yanis.jpeg" → "/app/Ams-Projet-/images/utilisateurs/yanis.jpeg"
+    resolved = os.path.join(PROJECT_ROOT, ref)
+    if os.path.exists(resolved):
+        print("[face.py] Photo résolue: {}".format(resolved))
+        return face_recognition.load_image_file(resolved)
+
+    raise FileNotFoundError(
+        "Photo introuvable: '{}' (cherché aussi dans {})".format(ref, resolved)
+    )
 
 def _encode_first_face(image: np.ndarray) -> np.ndarray:
     encodings = face_recognition.face_encodings(image)
