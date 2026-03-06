@@ -35,10 +35,12 @@ class RespondRequest(BaseModel):
     lang: Optional[str] = "fr"
     session_id: Optional[str] = None
 
-class RespondResponse(BaseModel):
+class RespondRequest(BaseModel):
     text: str
-    actions: Dict[str, Any]
-    session_id: str
+    lang: Optional[str] = "fr"
+    session_id: Optional[str] = None
+    user_name: Optional[str] = None  # Nouveau champ : nom reconnu par la caméra
+
 
 class Creneau(BaseModel):
     jour: str
@@ -106,20 +108,21 @@ def parse_all_intents(req: ParseRequest):
 
 @app.post("/v1/respond", response_model=RespondResponse)
 def respond(req: RespondRequest):
-    # ensure session
     print(f"[DEBUG] Session ID recue du client: {req.session_id}")
     session_id = req.session_id or sessions.create_session()
     print(f"[DEBUG] Session ID utilisee: {session_id}")
-    # parse_result = nlu.parse(req.text, req.lang)
     parse_result = nlu.parse(req.text)
 
-    # Vérifier si une réservation (slot filling) est en cours
+    # Injecter le nom dans le parse_result si fourni
+    if req.user_name:
+        parse_result["user_name"] = req.user_name
+
     session_data = sessions.get(session_id)
     booking_in_progress = "booking_slots" in session_data
     if parse_result["intent"] == "unknown" and not booking_in_progress:
         response_text = "Désolé, je n'ai pas compris votre demande. Pouvez-vous reformuler ?"
         return RespondResponse(text=response_text, actions={}, session_id=session_id)
-    
+
     try:
         response_text, actions = dialog.handle(session_id, parse_result)
     except Exception as e:

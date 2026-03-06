@@ -122,6 +122,8 @@ lieux_patterns = [
     # Salle identifiée par lettre (ex: "salle A") — AVANT le pattern générique "salle"
     [{"LOWER": "salle"}, {"LOWER": {"IN": ["a", "b", "c", "d","e","f"]}}],
     [{"LOWER": "salle"}, {"TEXT": {"REGEX": "^[a-fA-F]$"}}],  # lettre seule sans ponctuation
+    [{"LOWER": "salle"}, {"TEXT": {"REGEX": "^[a-fA-F][^a-zA-Z0-9]?$"}}],
+
 
     [{"LOWER": "salle"}, {"LOWER": "de"}, {"LOWER": {"IN": ["sport", "natation", "fitness", "musculation"]}}],
     [{"LOWER": "salle"}, {"LOWER": {"IN": ["natation", "fitness", "musculation", "sport"]}}],

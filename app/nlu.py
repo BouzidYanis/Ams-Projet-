@@ -1,4 +1,6 @@
 from typing import Dict, Any
+import re
+
 
 from app.nlu_train import traiter_requete as matcher_parse
 
@@ -28,6 +30,8 @@ class NLU:
         if len(s) >= 2 and ((s[0] == s[-1] == "'") or (s[0] == s[-1] == '"')):
             s = s[1:-1].strip()
         s = s.lower().strip()
+        # Supprimer la ponctuation finale (., !, ?, etc.)
+        s = re.sub(r'[^\w\s]$', '', s).strip()
         s = " ".join(s.split())
 
         direct = {
@@ -35,6 +39,8 @@ class NLU:
             "salle b": "salle_b",
             "salle c": "salle_c",
             "salle d": "salle_d",
+            "salle e": "salle_e",
+            "salle f": "salle_f",
             "salle natation": "natation",
             "salle de natation": "natation",
         }
