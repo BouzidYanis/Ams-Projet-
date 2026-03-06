@@ -31,3 +31,4 @@ ollama_storage/
 *.log
 nohup.out
 2
+client/client/*.txt
