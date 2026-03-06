@@ -26,8 +26,10 @@ SERVER_URL = "http://localhost:8000"
 # SERVER_URL = "http://10.60.55.34:8000"
 
 # 2. AUDIO SOURCE CONFIG
-MODE = "phone"  # Options: "phone" or "pepper"
-PHONE_URL = "http://192.168.1.11:8080/audio.wav"
+#MODE = "phone"  # Options: "phone" or "pepper"
+MODE = "pepper"  # Options: "phone" or "pepper"
+
+PHONE_URL = "http://10.126.8.53:8080/audio.wav"
 # PHONE_URL = "http://10.60.55.196:8080/audio.wav"
 
 # 3. ROBOT HARDWARE CONFIG

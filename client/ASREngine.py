@@ -181,6 +181,8 @@ class ASREngine:
                         
                         batch.append(name)
                         print("D : batch content :", batch)
+                        print("D : active_transcript_list :", active_transcript_list)
+                        
                         # 2. CAS A : Le batch est plein (ex: 5s) -> On transcrit
                         if len(batch) >= self.transcript_batch_size:
                             filename = "D_batch_{}s_{}.wav".format(self.transcript_batch_size, idx)
@@ -195,12 +197,12 @@ class ASREngine:
                         # 3. CAS B : Seuil de silence atteint -> On flush et on arrête
                         if consecutive_silence >= self.silence_delay:
                             # S'il reste des morceaux dans le batch actuel, on les envoie
-                            # if batch:
-                            #     filename = "D_flush_{}.wav".format(idx)
-                            #     merged = self.audio.merge_wavs(batch, filename)
-                            #     res = self.net.send_asr_file(merged)
-                            #     if res and res.get("text"):
-                            #         active_transcript_list.append(res.get("text"))
+                            if batch:
+                                filename = "D_flush_{}.wav".format(idx)
+                                merged = self.audio.merge_wavs(batch, filename)
+                                res = self.net.send_asr_file(merged)
+                                if res and res.get("text"):
+                                    active_transcript_list.append(res.get("text"))
                             
                             # On concatène tout et on envoie au Main
                             if active_transcript_list:

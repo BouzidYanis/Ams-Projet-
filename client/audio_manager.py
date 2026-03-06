@@ -55,14 +55,14 @@ class AudioInputs:
 
     def _get_pepper_stream(self):
         """ 
-        À implémenter via ALModule / ALAudioDevice.
-        Ici, vous devrez probablement utiliser une Queue pour récupérer 
-        les buffers poussés par le callback 'processRemote'.
+        Consomme le générateur de PepperAudioCapture.
         """
-        # Pour l'instant, on peut simuler ou appeler votre spécialiste
         if self.pepper:
+            # IMPORTANT: On appelle la méthode pour récupérer l'objet générateur
             return self.pepper.stream_generator() 
-        return None
+        else:
+            print("[Inputs] Erreur: pepper_specialist (PepperAudioCapture) est None")
+            return None
 
     # def record_chunk(self, filename, duration=2):
     #     """ Porte d'entrée unique pour capturer un fichier WAV. """
