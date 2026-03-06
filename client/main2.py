@@ -16,7 +16,7 @@ from affichage_dynamique import PepperWebDisplayService
 from nav import Navigation
 
 # ─── CONFIGURATION ───
-PEPPER_IP = "192.168.13.213"
+PEPPER_IP = "192.168.13.202"
 PEPPER_PORT = 9559
 
 # Le serveur FastAPI (NLU + Dialog + ASR)
@@ -139,12 +139,9 @@ class PepperOrchestrator:
                 print("[ASR] Erreur HTTP {}: {}".format(resp.status_code, resp.text[:200]))
                 return None
         except Exception as e:
-            err_msg = str(e)
-            if isinstance(err_msg, unicode):
-                err_msg = err_msg.encode("utf-8")
-            print("[ASR] Erreur envoi: {}".format(err_msg))
+            print("[ASR] Erreur envoi: " + repr(e))  # FIX
             return None
-
+        
     def send_to_dialog(self, text, lang="fr", user_name=None):
         """Envoie le texte transcrit au DialogManager et retourne la réponse."""
         payload = {
@@ -166,10 +163,7 @@ class PepperOrchestrator:
                 print("[DIALOG] Erreur HTTP {}: {}".format(resp.status_code, resp.text[:200]))
                 return None
         except Exception as e:
-            err_msg = str(e)
-            if isinstance(err_msg, unicode):
-                err_msg = err_msg.encode("utf-8")
-            print("[DIALOG] Erreur envoi: {}".format(err_msg))
+            print("[DIALOG] Erreur envoi: " + repr(e))  # FIX
             return None
 
     # ─── ACTIONS DU ROBOT ───
@@ -178,15 +172,18 @@ class PepperOrchestrator:
         """Fait parler le robot. Gère l'encodage Python 2.7."""
         if not text:
             return
+        # FIX: convertir en bytes UTF-8 pour le print ET pour NAOqi
         if isinstance(text, unicode):
-            text_for_tts = text.encode("utf-8")
+            text_bytes = text.encode("utf-8")
         else:
-            text_for_tts = text
-        print("[TTS] {}".format(text_for_tts))
+            text_bytes = text
+        # FIX: utiliser concatenation au lieu de .format() pour éviter re-décodage ASCII
+        print("[TTS] " + text_bytes)
         try:
-            self.tts.say(text_for_tts)
+            # NAOqi accepte les bytes UTF-8 directement
+            self.tts.say(text_bytes)
         except Exception as e:
-            print("[TTS] Erreur: {}".format(e))
+            print("[TTS] Erreur: " + repr(e))
 
     def robot_gesture(self, gesture_name):
         """Lance un geste/animation sur le robot."""
@@ -234,6 +231,7 @@ class PepperOrchestrator:
                 if face_data:
                     image_bytes, meta = flow.take_picture()
                     result = flow.call_verify_api(image_bytes, meta=meta)
+                    print(result)
                     if result and result.get("matched"):
                         best = result.get("best_match", {})
                         nom = best.get("nom", "")
@@ -249,7 +247,7 @@ class PepperOrchestrator:
                     print("[ACTION] Aucun visage detecte")
                 flow.stop_face_detection()
             except Exception as e:
-                print("[ACTION] Erreur reco faciale: {}".format(e))
+                print("[TTS] Erreur reco faciale: " + repr(e))
 
         elif action_type == "booking_confirmed":
             # Réservation confirmée
@@ -280,6 +278,7 @@ class PepperOrchestrator:
             url = actions.get("url", "")
             if url:
                 self.robot_show_url(url)
+        
 
     # ─── DETECTION WAKE WORD ───
 
@@ -356,8 +355,9 @@ class PepperOrchestrator:
         """
         Mode veille : écoute en continu, attend un wake word.
         """
-        print("\n[VEILLE] En attente de wake word ({})...".format(", ".join([w.encode("utf-8") for w in WAKE_WORDS])))
-        self.leds.fadeRGB("FaceLeds", 0x00FFFFFF, 0.5)  # Blanc = veille
+        print("\n[VEILLE] En attente de wake word ({})...".format(
+            ", ".join([w.encode("utf-8") for w in WAKE_WORDS])))
+        self.leds.fadeRGB("FaceLeds", 0x00FFFFFF, 0.5)
 
         filepath = self.record_audio(duration=3)
         if not filepath:
@@ -369,24 +369,25 @@ class PepperOrchestrator:
         if result:
             text = result.get("text", "")
             if self.contains_wake_word(text):
-                print("[VEILLE] Wake word detecte !")
+                print("\n[WAKE] Wake word détecté !")
+                self.leds.fadeRGB("FaceLeds", 0x00FFFF00, 0.3)  # Jaune = reconnaissance
+
+                # 1. Reconnaissance faciale
+                prenom, nom = self._try_face_recognition()  # ← FIX: récupérer le tuple
+
+                # 2. Construire le user_name
+                if prenom or nom:
+                    user_name = u"{} {}".format(prenom or "", nom or "").strip()
+                else:
+                    user_name = None
+
+                # 3. Passer en mode engagé
                 self.is_engaged = True
                 self.last_interaction = time.time()
                 self.dialog_session_id = None  # Nouvelle session
 
-                # --- Lancer la reconnaissance faciale ---
-                prenom, nom = self._try_face_recognition()
-
-                # Construire le message de greeting avec ou sans nom
-                if prenom or nom:
-                    greeting_text = u"bonjour {} {}".format(
-                        prenom if prenom else u"",
-                        nom if nom else u""
-                    ).strip()
-                else:
-                    greeting_text = u"bonjour"
-
-                self.process_user_input(greeting_text, result.get("language", "fr"))
+                # 4. Envoyer le "bonjour" avec le nom reconnu au DialogManager
+                self.process_user_input(text, lang="fr", user_name=user_name)  # ← FIX: passer user_name
                 return True
 
         return False
@@ -400,14 +401,13 @@ class PepperOrchestrator:
             VERIFY_URL = SERVER_URL + "/v1/verify"
 
             print("[FACE] Lancement de la detection faciale...")
-            self.leds.fadeRGB("FaceLeds", 0x00FFFF00, 0.3)  # Jaune = scan visage
+            self.leds.fadeRGB("FaceLeds", 0x00FFFF00, 0.3)
 
             flow = FaceRecoFlow(self.session, verify_url=VERIFY_URL)
             flow.start_face_detection()
 
             face_data = flow.wait_for_face(timeout_s=8)
             if not face_data:
-                print("[FACE] Aucun visage detecte.")
                 flow.stop_face_detection()
                 return None, None
 
@@ -415,25 +415,36 @@ class PepperOrchestrator:
             flow.stop_face_detection()
 
             result = flow.call_verify_api(image_bytes, meta=meta)
-
+            print(result)
             if result and result.get("matched") and result.get("best_match"):
                 best = result["best_match"]
-                nom = best.get("nom", "") or ""
+                # FIX: s'assurer que prenom/nom sont des str bytes et non unicode
                 prenom = best.get("prenom", "") or ""
+                nom = best.get("nom", "") or ""
 
-                if isinstance(nom, unicode):
-                    nom = nom.encode("utf-8")
-                if isinstance(prenom, unicode):
-                    prenom = prenom.encode("utf-8")
+                # Convertir en bytes UTF-8 pour l'affichage Python 2.7
+                prenom_b = prenom.encode("utf-8") if isinstance(prenom, unicode) else prenom
+                nom_b = nom.encode("utf-8") if isinstance(nom, unicode) else nom
 
-                print("[FACE] Personne reconnue: {} {}".format(prenom, nom))
+                # FIX: utiliser b"" concatenation pour le print, pas .format() avec unicode
+                print("[FACE] Personne reconnue: " + prenom_b + " " + nom_b)
+
+                # Retourner les unicode originaux (pas les bytes) pour l'usage ultérieur
                 return prenom, nom
             else:
-                print("[FACE] Visage non reconnu.")
+                print("[FACE] Personne non reconnue.")
                 return None, None
 
         except Exception as e:
-            print("[FACE] Erreur reconnaissance faciale: {}".format(e))
+            # FIX: triple protection contre UnicodeEncodeError
+            try:
+                err_str = unicode(e).encode("utf-8")
+            except Exception:
+                try:
+                    err_str = str(e)
+                except Exception:
+                    err_str = "erreur inconnue"
+            print("[FACE] Erreur reconnaissance faciale: " + err_str)
             return None, None
 
     def run_engaged_mode(self):
