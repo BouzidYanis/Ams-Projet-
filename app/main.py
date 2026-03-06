@@ -10,6 +10,7 @@ from app.dialog_manager import DialogManager
 from app.sessions import SessionStore
 from app.speech import ASRModule
 
+from app.face import verify_endpoint, VerifyResponse
 from app.reservation import reserver_salle
 from app.navigation import InstructionGenerator
 
@@ -49,6 +50,8 @@ class ReservationRequest(BaseModel):
     salle: str
     creneau: Creneau
 
+
+
 @app.post("/v1/asr")
 async def transcribe_audio(file: UploadFile = File(...)):
     """ Endpoint pour envoyer l'audio Pepper et renvoyer le texte transcrit """
@@ -86,6 +89,10 @@ async def transcribe_audio(file: UploadFile = File(...)):
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
+
+@app.post("/v1/verify", response_model=VerifyResponse)
+def verify(image: UploadFile = File(...)):
+    return verify_endpoint(image)
 
 @app.post("/v1/parse", response_model=ParseResponse)
 def parse(req: ParseRequest):

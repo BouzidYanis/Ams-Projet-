@@ -2,12 +2,12 @@ from pymongo import MongoClient, ASCENDING
 from pymongo.errors import PyMongoError
 import time
 import uuid
+from .DB_access import DatabaseMongo
 
 class SessionStoreMongo:
-    def __init__(self, mongo_uri="mongodb://localhost:27017/", db_name="pepperdb", collection_name="sessions", ttl_seconds=3600):
-        self.client = MongoClient(mongo_uri)
-        self.db = self.client[db_name]
-        self.collection = self.db[collection_name]
+    def __init__(self, ttl_seconds=3600):
+        self.db = DatabaseMongo()
+        self.collection = self.db.get_collection("sessions")
         self.ttl = ttl_seconds
         
         # Index TTL sur le champ 'last_touched' pour nettoyage automatique

@@ -4,7 +4,7 @@ import sys
 import time
 from nav import Navigation
 # Configuration
-PEPPER_IP = "192.168.13.230"  # Remplacez par l'IP de votre Pepper
+PEPPER_IP = "192.168.13.213"  # Remplacez par l'IP de votre Pepper
 PEPPER_PORT = 9559
 
 # def afficher_page_web(url):
@@ -58,7 +58,7 @@ if __name__ == "__main__":
 
         # Initialisation du service d'affichage et de navigation
         nav = Navigation("http://10.126.8.40:5500/",session)
-        nav.afficher_carte('salle_c')
+        nav.afficher_carte('salle_a')
     except Exception as e:
         print("Erreur: " + str(e))
         sys.exit(1)
