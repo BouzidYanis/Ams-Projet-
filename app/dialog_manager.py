@@ -405,6 +405,8 @@ class DialogManager:
         intent = parse_result.get("intent", "unknown")
         entities = parse_result.get("entities", {})
         user_text = parse_result.get("raw_text") or parse_result.get("text") or ""
+        user_name = parse_result.get("user_name", None)  # Nom issu de la reconnaissance faciale
+
         # store user message in history
         if user_text:
             self._append_message(session_id, "user", user_text)
@@ -463,9 +465,19 @@ class DialogManager:
             return self._handle_booking_flow(session_id, intent, entities, user_text)
         # --- Greeting ---
         if intent == "greeting":
-            actions = {
-                "type": "face_recognition",
-            }
+            if user_name:
+                # Personne reconnue → salutation personnalisée
+                text = "Bonjour {} ! Comment puis-je vous aider aujourd'hui ?".format(user_name)
+            else:
+                # Personne inconnue → présentation du robot
+                text = (
+                    "Bonjour ! Je suis Pepper, le robot d'accueil de la salle multisports. "
+                    "Je peux vous aider pour les horaires, les activités, "
+                    "les réservations ou pour vous orienter. Que souhaitez-vous ?"
+                )
+            self._append_message(session_id, "assistant", text)
+            return text, {}
+        
         # --- Navigate ---
         if intent == "navigate":
             locations = entities.get("location", [])

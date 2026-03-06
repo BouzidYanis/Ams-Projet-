@@ -145,13 +145,17 @@ class PepperOrchestrator:
             print("[ASR] Erreur envoi: {}".format(err_msg))
             return None
 
-    def send_to_dialog(self, text, lang="fr"):
+    def send_to_dialog(self, text, lang="fr", user_name=None):
         """Envoie le texte transcrit au DialogManager et retourne la réponse."""
         payload = {
             "text": text,
             "lang": lang,
             "session_id": self.dialog_session_id,
         }
+        # Ajouter le nom si disponible
+        if user_name:
+            payload["user_name"] = user_name
+
         try:
             resp = requests.post(RESPOND_URL, json=payload, timeout=REQUEST_TIMEOUT)
             if resp.ok:
@@ -351,17 +355,14 @@ class PepperOrchestrator:
     def run_idle_mode(self):
         """
         Mode veille : écoute en continu, attend un wake word.
-        Retourne True si un wake word est détecté, False si on doit arrêter.
         """
-        print("\n[VEILLE] En attente de wake word ({})...".format(
-            ", ".join([w.encode("utf-8") for w in WAKE_WORDS])))
+        print("\n[VEILLE] En attente de wake word ({})...".format(", ".join([w.encode("utf-8") for w in WAKE_WORDS])))
         self.leds.fadeRGB("FaceLeds", 0x00FFFFFF, 0.5)  # Blanc = veille
 
         filepath = self.record_audio(duration=3)
         if not filepath:
             return False
 
-        # Envoyer au ASR
         result = self.send_to_asr(filepath)
         self.cleanup_file(filepath)
 
@@ -373,11 +374,67 @@ class PepperOrchestrator:
                 self.last_interaction = time.time()
                 self.dialog_session_id = None  # Nouvelle session
 
-                # Envoyer aussi le premier message au dialog
-                self.process_user_input(text, result.get("language", "fr"))
+                # --- Lancer la reconnaissance faciale ---
+                prenom, nom = self._try_face_recognition()
+
+                # Construire le message de greeting avec ou sans nom
+                if prenom or nom:
+                    greeting_text = u"bonjour {} {}".format(
+                        prenom if prenom else u"",
+                        nom if nom else u""
+                    ).strip()
+                else:
+                    greeting_text = u"bonjour"
+
+                self.process_user_input(greeting_text, result.get("language", "fr"))
                 return True
 
         return False
+    
+    def _try_face_recognition(self):
+        """
+        Lance la détection faciale et retourne (prenom, nom) ou (None, None).
+        """
+        try:
+            from reco_face import FaceRecoFlow
+            VERIFY_URL = SERVER_URL + "/v1/verify"
+
+            print("[FACE] Lancement de la detection faciale...")
+            self.leds.fadeRGB("FaceLeds", 0x00FFFF00, 0.3)  # Jaune = scan visage
+
+            flow = FaceRecoFlow(self.session, verify_url=VERIFY_URL)
+            flow.start_face_detection()
+
+            face_data = flow.wait_for_face(timeout_s=8)
+            if not face_data:
+                print("[FACE] Aucun visage detecte.")
+                flow.stop_face_detection()
+                return None, None
+
+            image_bytes, meta = flow.take_picture()
+            flow.stop_face_detection()
+
+            result = flow.call_verify_api(image_bytes, meta=meta)
+
+            if result and result.get("matched") and result.get("best_match"):
+                best = result["best_match"]
+                nom = best.get("nom", "") or ""
+                prenom = best.get("prenom", "") or ""
+
+                if isinstance(nom, unicode):
+                    nom = nom.encode("utf-8")
+                if isinstance(prenom, unicode):
+                    prenom = prenom.encode("utf-8")
+
+                print("[FACE] Personne reconnue: {} {}".format(prenom, nom))
+                return prenom, nom
+            else:
+                print("[FACE] Visage non reconnu.")
+                return None, None
+
+        except Exception as e:
+            print("[FACE] Erreur reconnaissance faciale: {}".format(e))
+            return None, None
 
     def run_engaged_mode(self):
         """
@@ -432,7 +489,7 @@ class PepperOrchestrator:
         # 2. Envoyer au DialogManager
         self.process_user_input(text, lang)
 
-    def process_user_input(self, text, lang="fr"):
+    def process_user_input(self, text, lang="fr", user_name=None):
         """Envoie le texte au DialogManager et traite la réponse."""
         self.last_interaction = time.time()
 
@@ -442,23 +499,20 @@ class PepperOrchestrator:
             text_log = text
         print("\n[USER] {}".format(text_log))
 
-        dialog_result = self.send_to_dialog(text, lang=lang)
+        dialog_result = self.send_to_dialog(text, lang=lang, user_name=user_name)
 
         if not dialog_result:
             self.robot_say("Désolé, je n'arrive pas à contacter le serveur.")
             return
 
-        # Extraire la réponse et les actions
         response_text = dialog_result.get("text", "")
         actions = dialog_result.get("actions", {})
 
-        # 3. Exécuter les actions
         self.handle_actions(actions)
-
-        # 4. Faire parler le robot
         self.robot_say(response_text)
 
-        self.tablet.hidePage()
+        if self.tablet:
+            self.tablet.hidePage()
 
         
 
