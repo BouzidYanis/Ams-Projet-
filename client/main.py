@@ -33,7 +33,7 @@ PHONE_URL = "http://10.126.8.53:8080/audio.wav"
 # PHONE_URL = "http://10.60.55.196:8080/audio.wav"
 
 # 3. ROBOT HARDWARE CONFIG
-PEPPER_IP = "192.168.1.10"
+PEPPER_IP = "192.168.13.202"
 # PEPPER_IP = "127.0.0.1" # For local simulation (Choregraphe)
 PEPPER_PORT = 9559
 

@@ -76,7 +76,7 @@ class PepperAudioCapture:
         buffer contient les bits bruts.
         """
         # On pousse les bits bruts dans la file
-        self.audio_queue.put(buffer)
+        self.audio_queue.put(bytes(buffer))
 
     def stream_generator(self):
         """
