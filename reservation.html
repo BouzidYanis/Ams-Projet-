@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Réservation - Centre Multisport</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            font-size: 18px;
+        }
+        
+        .reservation-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            width: 100vw;
+            background: white;
+            padding: 20px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            flex-shrink: 0;
+        }
+        
+        .header h1 {
+            color: #667eea;
+            font-size: 48px;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+        
+        .header p {
+            color: #666;
+            font-size: 20px;
+        }
+        
+        #statusMessage {
+            flex-shrink: 0;
+            min-height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            flex: 1;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        
+        label {
+            display: block;
+            color: #333;
+            font-weight: 700;
+            font-size: 20px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            min-height: 30px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        input[type="text"],
+        input[type="date"],
+        input[type="time"],
+        select {
+            width: 100%;
+            padding: 20px;
+            border: 3px solid #e0e0e0;
+            border-radius: 12px;
+            font-size: 22px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 65px;
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+        }
+        
+        select {
+            padding-right: 40px;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23333' stroke-width='2'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 15px center;
+            background-size: 24px;
+        }
+        
+        input[type="text"]:focus,
+        input[type="date"]:focus,
+        input[type="time"]:focus,
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 5px rgba(102, 126, 234, 0.2);
+            background-color: #f8f9ff;
+        }
+        
+        input[type="text"].filled,
+        input[type="date"].filled,
+        input[type="time"].filled,
+        select.filled {
+            background-color: #f0f4ff;
+            border-color: #667eea;
+            color: #333;
+        }
+        
+        .filled-indicator {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 30px;
+            height: 30px;
+            background-color: #28a745;
+            border-radius: 50%;
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            opacity: 0;
+            transition: all 0.3s ease;
+            flex-shrink: 0;
+        }
+        
+        .filled-indicator.show {
+            opacity: 1;
+            animation: scaleIn 0.3s ease;
+        }
+        
+        @keyframes scaleIn {
+            0% { transform: scale(0.8); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        
+        .button-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 20px;
+            flex-shrink: 0;
+        }
+        
+        button {
+            padding: 25px 20px;
+            border: none;
+            border-radius: 12px;
+            font-size: 22px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            min-height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            touch-action: manipulation;
+        }
+        
+        button:active:not(:disabled) {
+            transform: scale(0.95);
+        }
+        
+        .btn-submit {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+            grid-column: 1 / -1;
+        }
+        
+        .btn-submit:active:not(:disabled) {
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+        }
+        
+        .btn-submit:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .btn-reset {
+            background: #f0f0f0;
+            color: #333;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .btn-reset:active {
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .status-message {
+            text-align: center;
+            padding: 15px;
+            border-radius: 12px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            font-weight: 600;
+            font-size: 18px;
+        }
+        
+        .status-message.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 2px solid #28a745;
+            opacity: 1;
+        }
+        
+        .status-message.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 2px solid #dc3545;
+            opacity: 1;
+        }
+        
+        .status-message.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 2px solid #0c5460;
+            opacity: 1;
+        }
+        
+        .connection-status {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background-color: #dc3545;
+            animation: pulse 2s infinite;
+            z-index: 1000;
+            box-shadow: 0 0 10px rgba(220, 53, 69, 0.5);
+        }
+        
+        .connection-status.connected {
+            background-color: #28a745;
+            animation: none;
+            box-shadow: 0 0 10px rgba(40, 167, 69, 0.5);
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        #slotsSummary {
+            background: #f8f9fa;
+            border-left: 5px solid #667eea;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 16px;
+            color: #666;
+            flex-shrink: 0;
+        }
+        
+        #summaryContent {
+            margin: 5px 0;
+            font-size: 18px;
+            font-weight: 600;
+            color: #667eea;
+        }
+        
+        /* Tablet optimizations */
+        @media (max-width: 1024px) {
+            body {
+                font-size: 16px;
+            }
+            
+            .header h1 {
+                font-size: 40px;
+            }
+            
+            input[type="text"],
+            input[type="date"],
+            input[type="time"],
+            select {
+                font-size: 20px;
+                min-height: 60px;
+                padding: 18px;
+            }
+            
+            button {
+                font-size: 20px;
+                min-height: 70px;
+                padding: 20px;
+            }
+        }
+        
+        /* Landscape tablet */
+        @media (max-height: 600px) {
+            .header p {
+                display: none;
+            }
+            
+            .form-group {
+                gap: 4px;
+            }
+            
+            label {
+                font-size: 16px;
+            }
+            
+            input[type="text"],
+            input[type="date"],
+            input[type="time"],
+            select {
+                font-size: 18px;
+                min-height: 50px;
+                padding: 12px;
+            }
+            
+            button {
+                font-size: 18px;
+                min-height: 50px;
+                padding: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="connection-status" id="connectionStatus"></div>
+    
+    <div class="reservation-container">
+        <div class="header">
+            <h1>📅 Réservation</h1>
+            <p>Complétez le formulaire pour réserver votre créneau</p>
+        </div>
+        
+        <div id="statusMessage" class="status-message"></div>
+        
+        <div id="slotsSummary" class="slots-summary" style="display: none;">
+            <p><strong>Informations reçues:</strong></p>
+            <p id="summaryContent"></p>
+        </div>
+        
+        <form id="reservationForm">
+            <div class="form-group">
+                <label>
+                    <span style="display: flex; justify-content: space-between; align-items: center;">
+                        Salle
+                        <span class="filled-indicator" id="salleIndicator">✓</span>
+                    </span>
+                </label>
+                <input type="text" id="salle" name="salle" placeholder="Ex: Salle A" readonly>
+            </div>
+            
+            <div class="form-group">
+                <label>
+                    <span style="display: flex; justify-content: space-between; align-items: center;">
+                        Activité
+                        <span class="filled-indicator" id="activiteIndicator">✓</span>
+                    </span>
+                </label>
+                <input type="text" id="activite" name="activite" placeholder="Ex: Fitness" readonly>
+            </div>
+            
+            <div class="form-group">
+                <label>
+                    <span style="display: flex; justify-content: space-between; align-items: center;">
+                        Date
+                        <span class="filled-indicator" id="jourIndicator">✓</span>
+                    </span>
+                </label>
+                <input type="date" id="jour" name="jour" readonly>
+            </div>
+            
+            <div class="form-group">
+                <label>
+                    <span style="display: flex; justify-content: space-between; align-items: center;">
+                        Heure de début
+                        <span class="filled-indicator" id="heureIndicator">✓</span>
+                    </span>
+                </label>
+                <input type="time" id="heure" name="heure" readonly>
+            </div>
+            
+            <div class="form-group">
+                <label>Utilisateur</label>
+                <input type="text" id="utilisateur" name="utilisateur" placeholder="Votre nom" readonly>
+            </div>
+            
+            <div class="button-group">
+                <button type="reset" class="btn-reset">🔄 Effacer</button>
+                <button type="submit" class="btn-submit" id="submitBtn" disabled>✅ Réserver</button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        const BACKEND_URL = new URL(document.referrer || window.location.origin).origin || 'http://localhost:8000';
+        const SESSION_ID = new URLSearchParams(window.location.search).get('session_id') || 'default_session';
+        
+        let ws = null;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+        
+        const formFields = {
+            salle: document.getElementById('salle'),
+            activite: document.getElementById('activite'),
+            jour: document.getElementById('jour'),
+            heure: document.getElementById('heure'),
+            utilisateur: document.getElementById('utilisateur')
+        };
+        
+        const indicators = {
+            salle: document.getElementById('salleIndicator'),
+            activite: document.getElementById('activiteIndicator'),
+            jour: document.getElementById('jourIndicator'),
+            heure: document.getElementById('heureIndicator')
+        };
+        
+        // Initialiser WebSocket
+        function initWebSocket() {
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${wsProtocol}//${window.location.host}/ws/reservation/${SESSION_ID}`;
+            
+            try {
+                ws = new WebSocket(wsUrl);
+                
+                ws.onopen = () => {
+                    console.log('WebSocket connecté');
+                    updateConnectionStatus(true);
+                    reconnectAttempts = 0;
+                };
+                
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        updateFormWithSlots(data.slots || {});
+                        if (data.message) {
+                            showStatus(data.message, 'info');
+                        }
+                    } catch (e) {
+                        console.error('Erreur parsing WebSocket:', e);
+                    }
+                };
+                
+                ws.onerror = (error) => {
+                    console.error('Erreur WebSocket:', error);
+                    updateConnectionStatus(false);
+                };
+                
+                ws.onclose = () => {
+                    console.log('WebSocket fermé');
+                    updateConnectionStatus(false);
+                    attemptReconnect();
+                };
+                
+            } catch (e) {
+                console.error('Erreur création WebSocket:', e);
+                attemptReconnect();
+            }
+        }
+        
+        // Tentative de reconnexion
+        function attemptReconnect() {
+            if (reconnectAttempts < maxReconnectAttempts) {
+                reconnectAttempts++;
+                const delay = Math.pow(2, reconnectAttempts) * 1000;
+                console.log(`Tentative de reconnexion dans ${delay}ms`);
+                setTimeout(initWebSocket, delay);
+            }
+        }
+        
+        // Mettre à jour le formulaire avec les slots
+        function updateFormWithSlots(slots) {
+            let hasChanges = false;
+            
+            if (slots.salle && slots.salle !== formFields.salle.value) {
+                formFields.salle.value = slots.salle;
+                formFields.salle.classList.add('filled');
+                indicators.salle.classList.add('show');
+                hasChanges = true;
+            }
+            
+            if (slots.activite && slots.activite !== formFields.activite.value) {
+                formFields.activite.value = slots.activite;
+                formFields.activite.classList.add('filled');
+                indicators.activite.classList.add('show');
+                hasChanges = true;
+            }
+            
+            if (slots.jour && slots.jour !== formFields.jour.value) {
+                formFields.jour.value = convertToDateInput(slots.jour);
+                formFields.jour.classList.add('filled');
+                indicators.jour.classList.add('show');
+                hasChanges = true;
+            }
+            
+            if (slots.heure && slots.heure !== formFields.heure.value) {
+                formFields.heure.value = convertToTimeInput(slots.heure);
+                formFields.heure.classList.add('filled');
+                indicators.heure.classList.add('show');
+                hasChanges = true;
+            }
+            
+            if (slots.user_name && slots.user_name !== formFields.utilisateur.value) {
+                formFields.utilisateur.value = slots.user_name;
+            }
+            
+            updateSubmitButtonState();
+            updateSlotsummary(slots);
+            
+            if (hasChanges) {
+                showStatus('Formulaire mis à jour ✓', 'success');
+            }
+        }
+        
+        // Convertir le format de date (jour/mois/année -> YYYY-MM-DD)
+        function convertToDateInput(dateStr) {
+            if (!dateStr) return '';
+            
+            // Essayer plusieurs formats
+            const formats = [
+                /(\d{4})-(\d{2})-(\d{2})/,  // YYYY-MM-DD
+                /(\d{2})\/(\d{2})\/(\d{4})/,  // DD/MM/YYYY
+                /(\d{2})-(\d{2})-(\d{4})/,  // DD-MM-YYYY
+                /(\w+)\s+(\d{1,2})[,\s]+(\d{4})/  // Month DD, YYYY
+            ];
+            
+            for (let format of formats) {
+                const match = dateStr.match(format);
+                if (match) {
+                    if (format === formats[0]) return dateStr;  // Already YYYY-MM-DD
+                    if (format === formats[1]) {
+                        return `${match[3]}-${match[2]}-${match[1]}`;
+                    }
+                    if (format === formats[2]) {
+                        return `${match[3]}-${match[2]}-${match[1]}`;
+                    }
+                }
+            }
+            
+            return dateStr;
+        }
+        
+        // Convertir le format d'heure (HH:MM ou HH h MM)
+        function convertToTimeInput(timeStr) {
+            if (!timeStr) return '';
+            
+            // HH:MM format
+            if (timeStr.includes(':')) return timeStr.substring(0, 5);
+            
+            // HH h MM format
+            const match = timeStr.match(/(\d{1,2})\s*[hH]\s*(\d{2})/);
+            if (match) {
+                return `${match[1].padStart(2, '0')}:${match[2]}`;
+            }
+            
+            return timeStr;
+        }
+        
+        // Mettre à jour le statut de connexion
+        function updateConnectionStatus(connected) {
+            const status = document.getElementById('connectionStatus');
+            if (connected) {
+                status.classList.add('connected');
+            } else {
+                status.classList.remove('connected');
+            }
+        }
+        
+        // Afficher un message de statut
+        function showStatus(message, type = 'info') {
+            const statusEl = document.getElementById('statusMessage');
+            statusEl.textContent = message;
+            statusEl.className = `status-message ${type}`;
+            
+            if (type !== 'error') {
+                setTimeout(() => {
+                    statusEl.className = 'status-message';
+                }, 3000);
+            }
+        }
+        
+        // Mettre à jour le résumé des slots
+        function updateSlotsummary(slots) {
+            const summary = document.getElementById('slotsSummary');
+            const content = document.getElementById('summaryContent');
+            
+            const filledSlots = Object.entries(slots)
+                .filter(([key, value]) => value && ['salle', 'activite', 'jour', 'heure'].includes(key))
+                .map(([key, value]) => `${key}: ${value}`)
+                .join(', ');
+            
+            if (filledSlots) {
+                content.textContent = filledSlots;
+                summary.style.display = 'block';
+            } else {
+                summary.style.display = 'none';
+            }
+        }
+        
+        // Vérifier si le formulaire peut être soumis
+        function updateSubmitButtonState() {
+            const submitBtn = document.getElementById('submitBtn');
+            const hasSalle = formFields.salle.value.trim() !== '';
+            const hasJour = formFields.jour.value.trim() !== '';
+            const hasHeure = formFields.heure.value.trim() !== '';
+            
+            submitBtn.disabled = !(hasSalle && hasJour && hasHeure);
+        }
+        
+        // Soumission du formulaire
+        document.getElementById('reservationForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const reservationData = {
+                session_id: SESSION_ID,
+                salle: formFields.salle.value,
+                activite: formFields.activite.value,
+                jour: formFields.jour.value,
+                heure: formFields.heure.value
+            };
+            
+            try {
+                const response = await fetch(`${BACKEND_URL}/v1/reserver_salle`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        utilisateur_id: SESSION_ID,
+                        salle: reservationData.salle,
+                        creneau: {
+                            jour: reservationData.jour,
+                            heure_debut: reservationData.heure,
+                            heure_fin: calculateEndTime(reservationData.heure)
+                        }
+                    })
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    showStatus(`Réservation confirmée! ID: ${result.reservation_id}`, 'success');
+                    // Réinitialiser après 2 secondes
+                    setTimeout(() => {
+                        document.getElementById('reservationForm').reset();
+                        Object.values(indicators).forEach(ind => ind.classList.remove('show'));
+                        Object.values(formFields).forEach(field => field.classList.remove('filled'));
+                    }, 2000);
+                } else {
+                    showStatus('Erreur lors de la réservation', 'error');
+                }
+            } catch (error) {
+                console.error('Erreur réseau:', error);
+                showStatus('Erreur de connexion au serveur', 'error');
+            }
+        });
+        
+        // Calculer l'heure de fin (+ 1 heure par défaut)
+        function calculateEndTime(startTime) {
+            const [hours, minutes] = startTime.split(':').map(Number);
+            return `${(hours + 1).toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+        }
+        
+        // Initialiser
+        document.addEventListener('DOMContentLoaded', () => {
+            initWebSocket();
+            
+            // Mettre à jour l'état du bouton de soumission
+            formFields.salle.addEventListener('change', updateSubmitButtonState);
+            formFields.jour.addEventListener('change', updateSubmitButtonState);
+            formFields.heure.addEventListener('change', updateSubmitButtonState);
+        });
+    </script>
+</body>
+</html>

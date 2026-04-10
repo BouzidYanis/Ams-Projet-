@@ -23,7 +23,16 @@ PEPPER_PORT = 9559
 SERVER_URL = "http://localhost:8001"
 ASR_URL = SERVER_URL + "/v1/asr"
 RESPOND_URL = SERVER_URL + "/v1/respond"
-WEB_URL = "http://10.126.8.40:5500/"
+
+# Base URL pour les pages web (tablette)
+WEB_BASE_URL = "http://10.126.8.40:5500/"  # Ou "http://localhost:8000/" pour test
+
+# URLs des pages web
+WEB_NAVIGATION_URL = WEB_BASE_URL + "carte_navigation.html"
+WEB_RESERVATION_URL = WEB_BASE_URL + "reservation.html"
+
+# Shortcut pour compatibilité
+WEB_URL = WEB_BASE_URL
 
 # Paramètres audio
 RECORD_DURATION = 5          # secondes d'écoute par tour
@@ -256,9 +265,15 @@ class PepperOrchestrator:
             self.robot_gesture("nod")
 
         elif action_type == "booking_slot_filling":
-            # En attente d'info pour la réservation (le texte est déjà dit)
+            # En attente d'info pour la réservation - afficher le formulaire
             missing = actions.get("missing_slot", "")
             print("[ACTION] Slot manquant: {}".format(missing))
+            
+            # Afficher la page de réservation avec session_id
+            if self.dialog_session_id:
+                reservation_url = "{}?session_id={}".format(WEB_RESERVATION_URL, self.dialog_session_id)
+                self.robot_show_url(reservation_url)
+                print("[ACTION] Page de reservation affichee: {}".format(reservation_url))
 
         elif action_type == "navigate":
             # Instructions de navigation
@@ -278,6 +293,14 @@ class PepperOrchestrator:
             url = actions.get("url", "")
             if url:
                 self.robot_show_url(url)
+        
+        elif action_type == "show_web_form":
+            # Afficher un formulaire web avec synchronisation
+            form_type = actions.get("form_type", "reservation")
+            if form_type == "reservation" and self.dialog_session_id:
+                reservation_url = "{}?session_id={}".format(WEB_RESERVATION_URL, self.dialog_session_id)
+                self.robot_show_url(reservation_url)
+                print("[ACTION] Formulaire web affiche: {}".format(reservation_url))
         
 
     # ─── DETECTION WAKE WORD ───
