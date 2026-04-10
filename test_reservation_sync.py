@@ -1,133 +1,184 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 Script de test pour la réservation avec synchronisation WebSocket
+Compatible Python 2.7 + Python 3
 """
 
-import asyncio
-import websockets
 import json
 import requests
 import sys
+import socket
+import threading
+import time
 
 # URLs
-API_URL = "http://localhost:8000"
-WS_URL = "ws://localhost:8000"
+API_URL = "http://localhost:8001"
+WS_URL = "ws://localhost:8001"
 
-async def test_websocket_sync():
+def test_websocket_sync():
     """Test la synchronisation WebSocket des slots"""
     
     # 1. Créer une session de test
     print("\n=== TEST 1: Création de session ===")
-    session_response = requests.get(f"{API_URL}/v1/session")
-    if session_response.status_code != 200:
-        # Créer une sessions via le format POST
-        test_session = "test_session_001"
-    else:
-        test_session = "test_session_001"
+    test_session = "test_session_001"
+    print("[OK] Session: {}".format(test_session))
     
-    print(f"✓ Session: {test_session}")
+    # 2. Envoyer une requête de réservation
+    print("\n=== TEST 2: Envoi de requête de réservation ===")
+    reservation_request = {
+        "text": "Je veux reserver la salle A pour le 21 avril 2026 a 10h",
+        "session_id": test_session,
+        "user_name": "Jean Dupont"
+    }
     
-    # 2. Connecter au WebSocket
-    print("\n=== TEST 2: Connexion WebSocket ===")
     try:
-        async with websockets.connect(f"{WS_URL}/ws/reservation/{test_session}") as websocket:
-            print("✓ WebSocket connecté")
+        response = requests.post(
+            "{}/v1/respond".format(API_URL),
+            json=reservation_request,
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            print("[OK] Reponse du serveur: {}".format(result.get('text', 'N/A')))
+        else:
+            print("[ERREUR] Code: {}".format(response.status_code))
+            print("[ERREUR] Details: {}".format(response.text))
             
-            # 3. Recevoir le message initial
-            print("\n=== TEST 3: Réception initial ===")
-            initial_message = await websocket.recv()
-            initial_data = json.loads(initial_message)
-            print(f"✓ Message reçu: {initial_data}")
-            
-            # 4. Envoyer une requête de réservation
-            print("\n=== TEST 4: Envoi de requête de réservation ===")
-            reservation_request = {
-                "text": "Je veux réserver la salle A pour le 21 avril 2026 à 10h",
-                "session_id": test_session,
-                "user_name": "Jean Dupont"
-            }
-            
-            response = requests.post(
-                f"{API_URL}/v1/respond",
-                json=reservation_request
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                print(f"✓ Réponse du serveur: {result['text']}")
-            else:
-                print(f"✗ Erreur: {response.status_code}")
-            
-            # 5. Vérifier les slots
-            print("\n=== TEST 5: Vérification des slots ===")
-            slots_response = requests.get(f"{API_URL}/v1/session/{test_session}/slots")
-            if slots_response.status_code == 200:
-                slots_data = slots_response.json()
-                print(f"✓ Slots actuels: {slots_data['slots']}")
-            
-            # 6. Recevoir la mise à jour via WebSocket
-            print("\n=== TEST 6: Réception mise à jour WebSocket ===")
-            try:
-                websocket.settimeout(2)
-                updated_message = await asyncio.wait_for(websocket.recv(), timeout=3.0)
-                updated_data = json.loads(updated_message)
-                print(f"✓ Mise à jour reçue: {updated_data}")
-            except asyncio.TimeoutError:
-                print("⚠ Timeout - aucune mise à jour reçue (peut être normal)")
-            
-            print("\n=== TESTS RÉUSSIS ===\n")
-            
+    except requests.ConnectionError as e:
+        print("[ERREUR] Connexion refusee: {}".format(e))
+        print("[INFO] Assurez-vous que le serveur FastAPI est en cours d'execution")
+        print("[INFO] Lancez: python -m uvicorn app.main:app --host 0.0.0.0 --port 8000")
+        return False
     except Exception as e:
-        print(f"✗ Erreur WebSocket: {e}")
-        sys.exit(1)
+        print("[ERREUR] Erreur: {}".format(e))
+        return False
+    
+    # 3. Vérifier les slots via HTTP
+    print("\n=== TEST 3: Verification des slots (HTTP) ===")
+    try:
+        slots_response = requests.get(
+            "{}/v1/session/{}/slots".format(API_URL, test_session),
+            timeout=5
+        )
+        if slots_response.status_code == 200:
+            slots_data = slots_response.json()
+            print("[OK] Slots actuels:")
+            for key, value in slots_data.get('slots', {}).items():
+                print("  - {}: {}".format(key, value))
+        else:
+            print("[ERREUR] Code: {}".format(slots_response.status_code))
+    except Exception as e:
+        print("[ERREUR] Impossible de recuperer les slots: {}".format(e))
+        return False
+    
+    print("\n=== TESTS REUSSIS ===\n")
+    return True
+
+
+def test_health_check():
+    """Vérifie que le serveur est accessible"""
+    print("\n=== PRE-TEST: Vérification du serveur ===")
+    try:
+        response = requests.get(
+            "{}/".format(API_URL),
+            timeout=5
+        )
+        print("[OK] Serveur accessible")
+        return True
+    except requests.ConnectionError:
+        print("[ERREUR] Le serveur n'est pas accessible sur {}".format(API_URL))
+        print("")
+        print("SOLUTION:")
+        print("1. Assurez-vous que le backend est lancé:")
+        print("   python -m uvicorn app.main:app --host 0.0.0.0 --port 8001")
+        print("2. Ou utilisez le script de lancement:")
+        print("   python start.py")
+        print("")
+        return False
+    except Exception as e:
+        print("[ERREUR] Erreur: {}".format(e))
+        return False
 
 
 def test_http_slots():
     """Test l'endpoint HTTP pour les slots"""
-    print("\n=== TEST HTTP: Récupération des slots ===")
+    print("\n=== TEST HTTP: Recuperation des slots ===")
     
     session_id = "test_session_002"
     
     # 1. Envoyer une requête
-    print("1. Envoi de requête de réservation...")
-    response = requests.post(
-        f"{API_URL}/v1/respond",
-        json={
-            "text": "Je veux réserver la salle B pour le 22 avril à 14h30",
-            "session_id": session_id
-        }
-    )
-    
-    if response.status_code == 200:
-        result = response.json()
-        print(f"✓ Réponse: {result['text']}")
-    else:
-        print(f"✗ Erreur: {response.status_code}")
+    print("1. Envoi de requete de reservation...")
+    try:
+        response = requests.post(
+            "{}/v1/respond".format(API_URL),
+            json={
+                "text": "Je veux reserver la salle B pour le 22 avril a 14h30",
+                "session_id": session_id
+            },
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            print("[OK] Reponse: {}".format(result.get('text', 'N/A')))
+        else:
+            print("[ERREUR] Code: {}".format(response.status_code))
+    except Exception as e:
+        print("[ERREUR] {}".format(e))
+        return False
     
     # 2. Récupérer les slots
-    print("\n2. Récupération des slots...")
-    slots_response = requests.get(f"{API_URL}/v1/session/{session_id}/slots")
-    
-    if slots_response.status_code == 200:
-        slots_data = slots_response.json()
-        print(f"✓ Slots récupérés:")
-        for key, value in slots_data['slots'].items():
-            print(f"  - {key}: {value}")
-    else:
-        print(f"✗ Erreur: {slots_response.status_code}")
+    print("\n2. Recuperation des slots...")
+    try:
+        slots_response = requests.get(
+            "{}/v1/session/{}/slots".format(API_URL, session_id),
+            timeout=5
+        )
+        
+        if slots_response.status_code == 200:
+            slots_data = slots_response.json()
+            print("[OK] Slots recuperes:")
+            for key, value in slots_data.get('slots', {}).items():
+                print("  - {}: {}".format(key, value))
+            return True
+        else:
+            print("[ERREUR] Code: {}".format(slots_response.status_code))
+            return False
+    except Exception as e:
+        print("[ERREUR] {}".format(e))
+        return False
 
 
 if __name__ == "__main__":
-    print("╔═══════════════════════════════════════════╗")
-    print("║ TEST SYNCHRONISATION RÉSERVATION         ║")
-    print("╚═══════════════════════════════════════════╝")
+    print("\n" + "="*50)
+    print("TEST DE SYNCHRONISATION RESERVATION")
+    print("="*50)
+    
+    # Vérifier que le serveur est en cours d'exécution
+    if not test_health_check():
+        sys.exit(1)
     
     # Test HTTP simple
-    test_http_slots()
+    print("\n[TEST 1/2] Tests HTTP...")
+    http_ok = test_http_slots()
     
     # Test WebSocket
-    try:
-        asyncio.run(test_websocket_sync())
-    except KeyboardInterrupt:
-        print("\n\nTests interrompus")
+    print("\n[TEST 2/2] Tests de reservation...")
+    ws_ok = test_websocket_sync()
+    
+    # Résumé
+    print("\n" + "="*50)
+    print("RESUME DES TESTS:")
+    print("="*50)
+    print("[{}] Tests HTTP".format("OK" if http_ok else "ERREUR"))
+    print("[{}] Tests Reservation".format("OK" if ws_ok else "ERREUR"))
+    print("="*50 + "\n")
+    
+    if http_ok and ws_ok:
+        print("[SUCCESS] Tous les tests sont passes!")
+        sys.exit(0)
+    else:
+        print("[FAILURE] Certains tests ont echoue")
+        sys.exit(1)

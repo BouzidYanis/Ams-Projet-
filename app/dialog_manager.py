@@ -466,10 +466,29 @@ class DialogManager:
         # --- Greeting ---
         if intent == "greeting":
             if user_name:
-                # Personne reconnue → salutation personnalisée
+                # Personne reconnue → laisser le LLM personnaliser la salutation
+                context_msg = "L'utilisateur s'appelle '{}' et me salue. Je dois lui répondre chaleureusement de façon personnalisée.".format(user_name)
+            else:
+                # Personne inconnue → laisser le LLM générer une présentation appropriée
+                context_msg = "L'utilisateur me salue. Je dois me présenter et expliquer ce que je peux faire."
+            
+            self._append_message(session_id, "assistant", context_msg)
+            try:
+                print("[DialogManager] greeting: Appel LLM pour générer une réponse adaptée")
+                assistant_text = self.llm.generate_chat(self.system_prompt, history)
+                if assistant_text and assistant_text.strip():
+                    # Remplacer le message context par la vraie réponse LLM
+                    session = self.sessions.get(session_id)
+                    session["history"][-1] = {"role": "assistant", "content": assistant_text}
+                    self.sessions.update(session_id, session)
+                    return assistant_text, {}
+            except Exception as e:
+                print("[DialogManager] LLM error for greeting:", e)
+            
+            # Fallback si LLM échoue
+            if user_name:
                 text = "Bonjour {} ! Comment puis-je vous aider aujourd'hui ?".format(user_name)
             else:
-                # Personne inconnue → présentation du robot
                 text = (
                     "Bonjour ! Je suis Pepper, le robot d'accueil de la salle multisports. "
                     "Je peux vous aider pour les horaires, les activités, "
@@ -487,27 +506,54 @@ class DialogManager:
 
                 if nav:
                     steps = nav["instructions"]
-                    intro = "Je vais vous guider vers {}. ".format(nav["destination"])
-                    body = " ".join(steps)
-                    text = intro + body
-
+                    destination = nav["destination"]
+                    # Concaténer les instructions en un texte lisible
+                    instructions_text = " ".join(steps)
+                    
+                    # Laisser le LLM reformuler les instructions de navigation
+                    context_msg = "L'utilisateur demande comment aller à '{}'. Voici les instructions: {}".format(
+                        destination, instructions_text
+                    )
+                    self._append_message(session_id, "assistant", context_msg)
+                    try:
+                        print("[DialogManager] navigate: Appel LLM pour reformuler les instructions")
+                        assistant_text = self.llm.generate_chat(self.system_prompt, history)
+                        if assistant_text and assistant_text.strip():
+                            # Remplacer le message context par la vraie réponse LLM
+                            session = self.sessions.get(session_id)
+                            session["history"][-1] = {"role": "assistant", "content": assistant_text}
+                            self.sessions.update(session_id, session)
+                            actions = {
+                                "type": "navigate",
+                                "destination": destination,
+                                "destination_key": nav["destination_key"],
+                                "path": nav["path"],
+                                "instructions": steps,
+                            }
+                            return assistant_text, actions
+                    except Exception as e:
+                        print("[DialogManager] LLM error for navigate:", e)
+                    
+                    # Fallback si LLM échoue
+                    intro = "Je vais vous guider vers {}. ".format(destination)
+                    text = intro + instructions_text
                     actions = {
                         "type": "navigate",
-                        "destination": nav["destination"],
+                        "destination": destination,
                         "destination_key": nav["destination_key"],
                         "path": nav["path"],
-                        "instructions": nav["instructions"],
+                        "instructions": steps,
                     }
                     self._append_message(session_id, "assistant", text)
                     return text, actions
                 else:
                     text = "Désolé, je ne connais pas cet endroit. Pouvez-vous reformuler ?"
                     self._append_message(session_id, "assistant", text)
-                    return text, actions
+                    return text, {"type": "navigate_error"}
             else:
                 text = "Où souhaitez-vous aller ? Vous pouvez me dire par exemple : salle A, salle B, natation..."
                 self._append_message(session_id, "assistant", text)
-                return text, actions
+                return text, {"type": "navigate"}
 
         elif intent == "ask_activities":
             activity = entities.get("activity", [""])[0]
@@ -515,11 +561,28 @@ class DialogManager:
                 cursor = db.get_collection("activite").find({}, {"_id": 0, "nom": 1})
                 names = list(sport["nom"] for sport in cursor)
                 print(names)
-                text = "Nous proposons les activités suivantes : {}. Laquelle vous intéresse ?".format(", ".join(names)) if names else "Nous proposons plusieurs activités. Laquelle vous intéresse ?"
-                self._append_message(session_id, "assistant", text)
-                actions = {
-                    "type": "ask_activity",
-                }
+                # Laisser le LLM reformuler la liste d'activités
+                activities_list = ", ".join(names) if names else "plusieurs activités"
+                # Ajouter un message système pour guider le LLM
+                context_msg = "Voici la liste de nos activités: {}. L'utilisateur m'a demandé quelles activités nous proposons.".format(activities_list)
+                self._append_message(session_id, "assistant", context_msg)
+                # Laisser le LLM générer sa propre réponse
+                try:
+                    print("[DialogManager] ask_activities: Appel LLM pour reformuler la liste")
+                    assistant_text = self.llm.generate_chat(self.system_prompt, history)
+                    if assistant_text and assistant_text.strip():
+                        # Remplacer le message context par la vraie réponse LLM
+                        session = self.sessions.get(session_id)
+                        session["history"][-1] = {"role": "assistant", "content": assistant_text}
+                        self.sessions.update(session_id, session)
+                        actions = {"type": "ask_activity"}
+                        return assistant_text, actions
+                except Exception as e:
+                    print("[DialogManager] LLM error for ask_activities:", e)
+                
+                # Fallback si LLM échoue
+                text = "Nous proposons les activités suivantes : {}. Laquelle vous intéresse ?".format(activities_list)
+                actions = {"type": "ask_activity"}
                 return text, actions
             else:
                 activity = activity.capitalize()
@@ -527,17 +590,44 @@ class DialogManager:
                 info = db.get_collection("activite").find_one({"nom": activity}, {"_id": 0})
                 print(info)
                 if info:
-                    text = "L'activité {} est disponible. {}".format(activity, info.get("description", ""))
+                    # Passer les infos au LLM pour qu'il reformule
+                    description = info.get("description", "")
+                    context_msg = "L'utilisateur a demandé des infos sur l'activité '{}'. Voici les détails: {}".format(
+                        activity, description
+                    )
+                    self._append_message(session_id, "assistant", context_msg)
+                    try:
+                        print("[DialogManager] ask_activities (spécific): Appel LLM pour reformuler")
+                        assistant_text = self.llm.generate_chat(self.system_prompt, history)
+                        if assistant_text and assistant_text.strip():
+                            # Remplacer le message context par la vraie réponse LLM
+                            session = self.sessions.get(session_id)
+                            session["history"][-1] = {"role": "assistant", "content": assistant_text}
+                            self.sessions.update(session_id, session)
+                            info_serializable = json.loads(json.dumps(info, default=str))
+                            actions = {
+                                "type": "provide_activity_info",
+                                "activity": activity,
+                                "info": info_serializable,
+                            }
+                            return assistant_text, actions
+                    except Exception as e:
+                        print("[DialogManager] LLM error for activity info:", e)
+                    
+                    # Fallback si LLM échoue
+                    text = "L'activité {} est disponible. {}".format(activity, description)
                     info_serializable = json.loads(json.dumps(info, default=str))
                     actions = {
                         "type": "provide_activity_info",
                         "activity": activity,
                         "info": info_serializable,
                     }
+                    self._append_message(session_id, "assistant", text)
+                    return text, actions
                 else:
                     text = "Désolé, je n'ai pas trouvé d'informations sur l'activité {}.".format(activity)
-                self._append_message(session_id, "assistant", text)
-                return text, actions
+                    self._append_message(session_id, "assistant", text)
+                    return text, actions
 
         # Try LLM generation
         try:

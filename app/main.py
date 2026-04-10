@@ -145,6 +145,7 @@ async def get_reservation_page():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/v1/asr")
 async def transcribe_audio(file: UploadFile = File(...)):
     """ Endpoint pour envoyer l'audio Pepper et renvoyer le texte transcrit """
     temp_path = f"temp_{file.filename}"
@@ -305,4 +306,4 @@ async def websocket_reservation(websocket: WebSocket, session_id: str):
 
 
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8001, reload=True)

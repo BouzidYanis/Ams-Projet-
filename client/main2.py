@@ -16,7 +16,7 @@ from affichage_dynamique import PepperWebDisplayService
 from nav import Navigation
 
 # ─── CONFIGURATION ───
-PEPPER_IP = "192.168.13.202"
+PEPPER_IP = "192.168.13.209"
 PEPPER_PORT = 9559
 
 # Le serveur FastAPI (NLU + Dialog + ASR)
@@ -25,7 +25,7 @@ ASR_URL = SERVER_URL + "/v1/asr"
 RESPOND_URL = SERVER_URL + "/v1/respond"
 
 # Base URL pour les pages web (tablette)
-WEB_BASE_URL = "http://10.126.8.40:5500/"  # Ou "http://localhost:8000/" pour test
+WEB_BASE_URL = "http://10.126.5.245:5500/"  # Ou "http://localhost:8000/" pour test
 
 # URLs des pages web
 WEB_NAVIGATION_URL = WEB_BASE_URL + "carte_navigation.html"
