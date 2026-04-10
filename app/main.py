@@ -199,10 +199,15 @@ def parse_all_intents(req: ParseRequest):
 
 @app.post("/v1/respond", response_model=RespondResponse)
 async def respond(req: RespondRequest):
-    print(f"[DEBUG] Session ID recue du client: {req.session_id}")
+    print(f"\n[RESPOND] Nouvelle requête de dialogue")
+    print(f"[RESPOND] Session ID recue: {req.session_id}")
+    
     session_id = req.session_id or sessions.create_session()
-    print(f"[DEBUG] Session ID utilisee: {session_id}")
+    print(f"[RESPOND] Session ID utilisée: {session_id}")
+    print(f"[RESPOND] Texte: {req.text}")
+    
     parse_result = nlu.parse(req.text)
+    print(f"[RESPOND] NLU Résultat: intent={parse_result['intent']}, confidence={parse_result['confidence']}")
 
     # Injecter le nom dans le parse_result si fourni
     if req.user_name:
@@ -216,21 +221,34 @@ async def respond(req: RespondRequest):
 
     try:
         response_text, actions = dialog.handle(session_id, parse_result)
+        print(f"[RESPOND] Dialog réponse: {response_text}")
+        print(f"[RESPOND] Actions: {actions}")
     except Exception as e:
+        print(f"[RESPOND] ✗ ERREUR Dialog: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     
-    # Envoyer les slots mis à jour au frontend via WebSocket
+    # Envoyer les slots mis à jour au frontend via WebSocket (TOUJOURS, pas seulement s'il y en a)
     try:
         updated_session = sessions.get(session_id)
         booking_slots = updated_session.get("booking_slots", {})
-        if booking_slots:
-            # Ajouter les informations utilisateur
-            if req.user_name:
-                booking_slots["user_name"] = req.user_name
-            await manager.broadcast_slots(session_id, booking_slots)
-            print(f"[DEBUG] Slots envoyés au frontend: {booking_slots}")
+        print(f"[RESPOND] Slots dans la session: {booking_slots}")
+        
+        # Ajouter les informations utilisateur
+        if req.user_name:
+            booking_slots["user_name"] = req.user_name
+        
+        print(f"[WEBSOCKET] Envoi des slots via broadcast_slots:")
+        print(f"  - Session ID: {session_id}")
+        print(f"  - Slots: {booking_slots}")
+        
+        # Envoyer les slots même s'il y en a aucun (pour synchroniser le frontend)
+        await manager.broadcast_slots(session_id, booking_slots, message="Mise à jour du formulaire")
+        print(f"[WEBSOCKET] ✓ Slots envoyés au frontend avec succès")
+        
     except Exception as e:
-        print(f"[DEBUG] Erreur envoi slots WebSocket: {e}")
+        print(f"[RESPOND] ✗ Erreur envoi slots WebSocket: {e}")
+        import traceback
+        traceback.print_exc()
     
     return RespondResponse(text=response_text, actions=actions, session_id=session_id)
 

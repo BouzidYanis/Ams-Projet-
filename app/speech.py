@@ -144,7 +144,7 @@ class ASRModule:
         start_time = time.time()
         print(f"[ASR] Début de transcription pour: {audio_file_path}")
 
-        segments_generator, info = self.model.transcribe(audio_file_path, beam_size=5)
+        segments_generator, info = self.model.transcribe(audio_file_path, language="fr", beam_size=5)
 
         segments = list(segments_generator)
         full_text = ""

@@ -412,11 +412,6 @@
                 <input type="time" id="heure" name="heure" readonly>
             </div>
             
-            <div class="form-group">
-                <label>Utilisateur</label>
-                <input type="text" id="utilisateur" name="utilisateur" placeholder="Votre nom" readonly>
-            </div>
-            
             <div class="button-group">
                 <button type="reset" class="btn-reset">🔄 Effacer</button>
                 <button type="submit" class="btn-submit" id="submitBtn" disabled>✅ Réserver</button>
@@ -425,7 +420,8 @@
     </div>
 
     <script>
-        const BACKEND_URL = new URL(document.referrer || window.location.origin).origin || 'http://localhost:8000';
+        // Utiliser le port 8001 quel que soit l'hôte
+        const BACKEND_URL = window.location.protocol + '//' + window.location.hostname + ':8001';
         const SESSION_ID = new URLSearchParams(window.location.search).get('session_id') || 'default_session';
         
         let ws = null;
@@ -436,8 +432,7 @@
             salle: document.getElementById('salle'),
             activite: document.getElementById('activite'),
             jour: document.getElementById('jour'),
-            heure: document.getElementById('heure'),
-            utilisateur: document.getElementById('utilisateur')
+            heure: document.getElementById('heure')
         };
         
         const indicators = {
@@ -450,13 +445,17 @@
         // Initialiser WebSocket
         function initWebSocket() {
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${wsProtocol}//${window.location.host}/ws/reservation/${SESSION_ID}`;
+            const wsHost = window.location.hostname;
+            const wsUrl = `${wsProtocol}//${wsHost}:8001/ws/reservation/${SESSION_ID}`;
+            
+            console.log('[WS] Tentative de connexion à:', wsUrl);
             
             try {
                 ws = new WebSocket(wsUrl);
                 
                 ws.onopen = () => {
-                    console.log('WebSocket connecté');
+                    console.log('[WS] ✓ WebSocket connecté');
+                    console.log('[WS] Session ID:', SESSION_ID);
                     updateConnectionStatus(true);
                     reconnectAttempts = 0;
                 };
@@ -464,28 +463,37 @@
                 ws.onmessage = (event) => {
                     try {
                         const data = JSON.parse(event.data);
-                        updateFormWithSlots(data.slots || {});
+                        console.log('[WS] Message reçu:', JSON.stringify(data));
+                        
+                        if (data.slots && Object.keys(data.slots).length > 0) {
+                            console.log('[WS] Slots à appliquer:', data.slots);
+                            updateFormWithSlots(data.slots);
+                        } else {
+                            console.log('[WS] Aucun slot reçu');
+                        }
+                        
                         if (data.message) {
+                            console.log('[WS] Message:', data.message);
                             showStatus(data.message, 'info');
                         }
                     } catch (e) {
-                        console.error('Erreur parsing WebSocket:', e);
+                        console.error('[WS] Erreur parsing:', e, 'Data brut:', event.data);
                     }
                 };
                 
                 ws.onerror = (error) => {
-                    console.error('Erreur WebSocket:', error);
+                    console.error('[WS] ✗ Erreur WebSocket:', error);
                     updateConnectionStatus(false);
                 };
                 
                 ws.onclose = () => {
-                    console.log('WebSocket fermé');
+                    console.log('[WS] ✗ WebSocket fermé');
                     updateConnectionStatus(false);
                     attemptReconnect();
                 };
                 
             } catch (e) {
-                console.error('Erreur création WebSocket:', e);
+                console.error('[WS] ✗ Erreur création WebSocket:', e);
                 attemptReconnect();
             }
         }
@@ -502,9 +510,11 @@
         
         // Mettre à jour le formulaire avec les slots
         function updateFormWithSlots(slots) {
+            console.log('[FORM] Début mise à jour avec slots:', slots);
             let hasChanges = false;
             
             if (slots.salle && slots.salle !== formFields.salle.value) {
+                console.log('[FORM] Mise à jour salle:', slots.salle);
                 formFields.salle.value = slots.salle;
                 formFields.salle.classList.add('filled');
                 indicators.salle.classList.add('show');
@@ -512,6 +522,7 @@
             }
             
             if (slots.activite && slots.activite !== formFields.activite.value) {
+                console.log('[FORM] Mise à jour activite:', slots.activite);
                 formFields.activite.value = slots.activite;
                 formFields.activite.classList.add('filled');
                 indicators.activite.classList.add('show');
@@ -519,28 +530,31 @@
             }
             
             if (slots.jour && slots.jour !== formFields.jour.value) {
-                formFields.jour.value = convertToDateInput(slots.jour);
+                const convertedDate = convertToDateInput(slots.jour);
+                console.log('[FORM] Mise à jour jour:', slots.jour, '→', convertedDate);
+                formFields.jour.value = convertedDate;
                 formFields.jour.classList.add('filled');
                 indicators.jour.classList.add('show');
                 hasChanges = true;
             }
             
             if (slots.heure && slots.heure !== formFields.heure.value) {
-                formFields.heure.value = convertToTimeInput(slots.heure);
+                const convertedTime = convertToTimeInput(slots.heure);
+                console.log('[FORM] Mise à jour heure:', slots.heure, '→', convertedTime);
+                formFields.heure.value = convertedTime;
                 formFields.heure.classList.add('filled');
                 indicators.heure.classList.add('show');
                 hasChanges = true;
-            }
-            
-            if (slots.user_name && slots.user_name !== formFields.utilisateur.value) {
-                formFields.utilisateur.value = slots.user_name;
             }
             
             updateSubmitButtonState();
             updateSlotsummary(slots);
             
             if (hasChanges) {
+                console.log('[FORM] ✓ Formulaire mis à jour');
                 showStatus('Formulaire mis à jour ✓', 'success');
+            } else {
+                console.log('[FORM] Aucune modification');
             }
         }
         
@@ -548,27 +562,60 @@
         function convertToDateInput(dateStr) {
             if (!dateStr) return '';
             
-            // Essayer plusieurs formats
-            const formats = [
-                /(\d{4})-(\d{2})-(\d{2})/,  // YYYY-MM-DD
-                /(\d{2})\/(\d{2})\/(\d{4})/,  // DD/MM/YYYY
-                /(\d{2})-(\d{2})-(\d{4})/,  // DD-MM-YYYY
-                /(\w+)\s+(\d{1,2})[,\s]+(\d{4})/  // Month DD, YYYY
-            ];
+            console.log('[DEBUG] Conversion date brute:', dateStr);
             
-            for (let format of formats) {
-                const match = dateStr.match(format);
-                if (match) {
-                    if (format === formats[0]) return dateStr;  // Already YYYY-MM-DD
-                    if (format === formats[1]) {
-                        return `${match[3]}-${match[2]}-${match[1]}`;
-                    }
-                    if (format === formats[2]) {
-                        return `${match[3]}-${match[2]}-${match[1]}`;
-                    }
+            // Format YYYY-MM-DD (déjà correct)
+            if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+                console.log('[DEBUG] Format YYYY-MM-DD détecté');
+                return dateStr;
+            }
+            
+            // Format DD/MM/YYYY ou DD-MM-YYYY
+            const dmyMatch = dateStr.match(/^(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})$/);
+            if (dmyMatch) {
+                const result = `${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}-${dmyMatch[1].padStart(2, '0')}`;
+                console.log('[DEBUG] Format DD/MM/YYYY détecté, résultat:', result);
+                return result;
+            }
+            
+            // Format: "jeudi 15 janvier 2025" ou "15 janvier 2025" ou "15 janvier"
+            const monthMap = {
+                'janvier': '01', 'février': '02', 'mars': '03', 'avril': '04',
+                'mai': '05', 'juin': '06', 'juillet': '07', 'août': '08',
+                'septembre': '09', 'octobre': '10', 'novembre': '11', 'décembre': '12'
+            };
+            
+            const dayMonthYearMatch = dateStr.match(/(\d{1,2})\s+(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)(?:\s+(\d{4}))?/i);
+            if (dayMonthYearMatch) {
+                const day = dayMonthYearMatch[1].padStart(2, '0');
+                const monthStr = dayMonthYearMatch[2].toLowerCase();
+                const month = monthMap[monthStr];
+                const year = dayMonthYearMatch[3] || new Date().getFullYear();
+                
+                if (month) {
+                    const result = `${year}-${month}-${day}`;
+                    console.log('[DEBUG] Format date texte détecté, résultat:', result);
+                    return result;
                 }
             }
             
+            // Format: "demain", "aujourd'hui", "après-demain"
+            const today = new Date();
+            if (dateStr.toLowerCase().includes("aujourd'hui") || dateStr.toLowerCase() === 'aujourd hui') {
+                return today.toISOString().split('T')[0];
+            }
+            if (dateStr.toLowerCase() === 'demain') {
+                const tomorrow = new Date(today);
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                return tomorrow.toISOString().split('T')[0];
+            }
+            if (dateStr.toLowerCase().includes('après') && dateStr.toLowerCase().includes('demain')) {
+                const afterTomorrow = new Date(today);
+                afterTomorrow.setDate(afterTomorrow.getDate() + 2);
+                return afterTomorrow.toISOString().split('T')[0];
+            }
+            
+            console.log('[DEBUG] Format date non reconnu:', dateStr);
             return dateStr;
         }
         
@@ -576,15 +623,40 @@
         function convertToTimeInput(timeStr) {
             if (!timeStr) return '';
             
-            // HH:MM format
-            if (timeStr.includes(':')) return timeStr.substring(0, 5);
+            console.log('[DEBUG] Conversion heure brute:', timeStr);
             
-            // HH h MM format
-            const match = timeStr.match(/(\d{1,2})\s*[hH]\s*(\d{2})/);
-            if (match) {
-                return `${match[1].padStart(2, '0')}:${match[2]}`;
+            // Format HH:MM (déjà correct)
+            if (/^\d{2}:\d{2}$/.test(timeStr)) {
+                console.log('[DEBUG] Format HH:MM détecté');
+                return timeStr;
             }
             
+            // Format HH:MM:SS
+            const hhmmssMatch = timeStr.match(/^(\d{1,2}):(\d{2}):/);
+            if (hhmmssMatch) {
+                return `${hhmmssMatch[1].padStart(2, '0')}:${hhmmssMatch[2]}`;
+            }
+            
+            // Format HHhMM (ex: "19h30")
+            const hhmatch = timeStr.match(/^(\d{1,2})\s*[hH]\s*(\d{2})?/);
+            if (hhmatch) {
+                const h = hhmatch[1].padStart(2, '0');
+                const m = (hhmatch[2] || '00').padStart(2, '0');
+                const result = `${h}:${m}`;
+                console.log('[DEBUG] Format HHh détecté, résultat:', result);
+                return result;
+            }
+            
+            // Format "19 heures" ou "19 h"
+            const hoursMatch = timeStr.match(/(\d{1,2})\s+(?:heures|heure|h)\b/i);
+            if (hoursMatch) {
+                const h = hoursMatch[1].padStart(2, '0');
+                const result = `${h}:00`;
+                console.log('[DEBUG] Format "heures" détecté, résultat:', result);
+                return result;
+            }
+            
+            console.log('[DEBUG] Format heure non reconnu:', timeStr);
             return timeStr;
         }
         
