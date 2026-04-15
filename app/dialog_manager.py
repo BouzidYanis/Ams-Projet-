@@ -26,7 +26,9 @@ DEFAULT_SYSTEM_PROMPT = (
     "Si la question est très simple (par exemple juste 'bonjour'), réponds par un message de bienvenue "
     "en expliquant clairement ce que tu peux faire pour l'utilisateur. "
     "Ne donne jamais d'informations personnelles sur d'autres personnes. "
-    "Si tu ne comprends pas, demande une clarification courte."
+    "Si tu ne comprends pas la demande (intention inconnue), essaie d'être utile en proposant les services "
+    "que je peux t'offrir, ou demande une clarification sur ce que tu peux faire. "
+    "Sois toujours bienveillant et oriente l'utilisateur vers ce que je peux vraiment faire."
 )
 
 
@@ -628,6 +630,37 @@ class DialogManager:
                     text = "Désolé, je n'ai pas trouvé d'informations sur l'activité {}.".format(activity)
                     self._append_message(session_id, "assistant", text)
                     return text, actions
+
+        # --- Unknown Intent ---
+        # Quand l'intention n'est pas reconnue, laisser le LLM générer une réponse
+        # avec un contexte d'aide
+        if intent == "unknown":
+            context_msg = (
+                "L'utilisateur a dit quelque chose que je n'ai pas bien compris. "
+                "Voici ce qu'il a dit: '{}'. "
+                "Je dois répondre poliment et proposer comment je peux l'aider dans la salle multisports."
+            ).format(user_text)
+            self._append_message(session_id, "assistant", context_msg)
+            try:
+                print("[DialogManager] unknown intent: Calling LLM with helpful context")
+                assistant_text = self.llm.generate_chat(self.system_prompt, history)
+                if assistant_text and assistant_text.strip():
+                    # Remplacer le message context par la vraie réponse LLM
+                    session = self.sessions.get(session_id)
+                    session["history"][-1] = {"role": "assistant", "content": assistant_text}
+                    self.sessions.update(session_id, session)
+                    return assistant_text, {}
+            except Exception as e:
+                print("[DialogManager] LLM error for unknown intent:", e)
+            
+            # Fallback amélioré pour unknown
+            fallback_text = (
+                "Je n'ai pas bien compris votre demande. Je suis ici pour vous aider avec : "
+                "les horaires, les activités disponibles, les réservations ou l'orientation dans le bâtiment. "
+                "Pouvez-vous me dire ce qui vous intéresse ?"
+            )
+            self._append_message(session_id, "assistant", fallback_text)
+            return fallback_text, {}
 
         # Try LLM generation
         try:

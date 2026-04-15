@@ -215,9 +215,9 @@ async def respond(req: RespondRequest):
 
     session_data = sessions.get(session_id)
     booking_in_progress = "booking_slots" in session_data
-    if parse_result["intent"] == "unknown" and not booking_in_progress:
-        response_text = "Désolé, je n'ai pas compris votre demande. Pouvez-vous reformuler ?"
-        return RespondResponse(text=response_text, actions={}, session_id=session_id)
+    # if parse_result["intent"] == "unknown" and not booking_in_progress:
+    #     response_text = "Désolé, je n'ai pas compris votre demande. Pouvez-vous reformuler ?"
+    #     return RespondResponse(text=response_text, actions={}, session_id=session_id)
 
     try:
         response_text, actions = dialog.handle(session_id, parse_result)
