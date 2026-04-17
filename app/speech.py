@@ -32,10 +32,10 @@ import webrtcvad
 from faster_whisper import WhisperModel
 
 # --- CONFIGURATION ---
-LOGPROB_THRESHOLD = -2.0  # More permissive (was -1.0)
-NOSPEECH_THRESHOLD = 0.8   # More permissive (was 0.6)
-VAD_AGGRESSIVENESS = 2    # 1 (relaxed) to 3 (aggressive)
-PADDING_FRAMES = 10       # ~300ms of buffer around speech
+LOGPROB_THRESHOLD = -1.5  # Plus strict : rejette les transcriptions peu confiantes
+NOSPEECH_THRESHOLD = 0.6   # Plus strict : rejette si trop de silence/bruit détecté
+VAD_AGGRESSIVENESS = 3    # 1 (relaxed) to 3 (aggressive) - MAX pour ignorer les petits bruits
+PADDING_FRAMES = 5        # ~150ms of buffer around speech - réduit pour être plus strict
 
 class ASRModule:
     def __init__(self, model_size="medium", logprob_threshold=LOGPROB_THRESHOLD, nospeech_threshold=NOSPEECH_THRESHOLD):
