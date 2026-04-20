@@ -60,6 +60,13 @@ INTENT_PATTERNS = {
         r"\b(quel|quelle).*\b(événement|animation|spécial|occasion)\b",
         r"\b(liste|voir).*\b(événement|animation|spécial|occasion)\b",
     ],
+    "cancel_booking": [
+        r"\b(annuler|annulation|cancel|supprimer|résilier|réservation)\b.*\b(annuler|annulation|cancel|supprimer|résilier)\b",
+        r"\b(annuler|supprimer).*\b(réservation|booking|course|cours|salle)\b",
+        r"\b(je (veux|voudrais|souhaite).*annuler|supprimer.*réservation)\b",
+        r"\b(annule|annulez|annulez-moi)\b",
+        r"\b(désister|abandon|déprogrammer)\b",
+    ],
 }
 
 # Compilez les patterns regex
@@ -226,6 +233,13 @@ if __name__ == "__main__":
             "Réservation terrain de badminton",
         ],
         
+        "cancel_booking": [
+            "Je voudrais annuler ma réservation",
+            "Annule ma réservation pour la salle A",
+            "Je souhaite supprimer ma réservation",
+            "Résilier mon cours de natation",
+            "Annulez ma réservation",
+        ],
         "qui": [
             "Qui es-tu ?",
             "C'est quoi ton nom ?",

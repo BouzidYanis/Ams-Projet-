@@ -219,6 +219,53 @@ class DialogManager:
         session.pop("booking_slots", None)
         self.sessions.update(session_id, session)
 
+    def _get_user_reservations(self, user_name: str) -> List[Dict[str, Any]]:
+        """Récupère toutes les réservations actives de l'utilisateur"""
+        try:
+            reservations = list(db.get_collection("reservations").find({
+                "user_name": user_name,
+                "statut": {"$ne": "annulee"}
+            }))
+            return reservations
+        except Exception as e:
+            print(f"[ERROR] Erreur lors de la récupération des réservations: {e}")
+            return []
+
+    def _cancel_booking(self, reservation_id: str) -> bool:
+        """Annule une réservation en mettant à jour son statut"""
+        from bson import ObjectId
+        try:
+            result = db.get_collection("reservations").update_one(
+                {"_id": ObjectId(reservation_id)},
+                {"$set": {"statut": "annulee", "date_annulation": datetime.now()}}
+            )
+            if result.modified_count > 0:
+                print(f"[CANCEL] Réservation {reservation_id} annulée avec succès")
+                return True
+            else:
+                print(f"[CANCEL] Aucune réservation trouvée avec l'ID {reservation_id}")
+                return False
+        except Exception as e:
+            print(f"[ERROR] Erreur lors de l'annulation: {e}")
+            return False
+
+    def _is_cancellation_in_progress(self, session_id: str) -> bool:
+        """Vérifie si une annulation est en cours"""
+        session = self.sessions.get(session_id)
+        return "cancellation_flow" in session
+
+    def _set_cancellation_flow(self, session_id: str, data: Dict[str, Any]) -> None:
+        """Marque qu'une annulation est en cours"""
+        session = self.sessions.get(session_id)
+        session["cancellation_flow"] = data
+        self.sessions.update(session_id, session)
+
+    def _clear_cancellation_flow(self, session_id: str) -> None:
+        """Efface le flux d'annulation"""
+        session = self.sessions.get(session_id)
+        session.pop("cancellation_flow", None)
+        self.sessions.update(session_id, session)
+
     def _is_room_booked(self, salle: str, jour: str, heure_debut: str,heure_fin:str) -> bool:
         """Vérifie dans la base de données si la salle est déjà réservée pour le créneau donné."""
         acitivites_planinng = db.get_collection("activite").find_one(
@@ -370,12 +417,31 @@ class DialogManager:
         # Pour l'instant, on retourne toutes les salles qui correspondent à l'activité
         return salles
 
-    def _handle_booking_flow(self, session_id: str, intent: str, entities: Dict[str, Any], raw_text: str) -> Tuple[str, Dict[str, Any]]:
+    def _handle_booking_flow(self, session_id: str, intent: str, entities: Dict[str, Any], raw_text: str, user_name: str = None) -> Tuple[str, Dict[str, Any]]:
         """
         Gère tout le flux de slot filling pour la réservation.
         Retourne (text, actions).
+        
+        Args:
+            session_id: ID de la session
+            intent: L'intention détectée
+            entities: Les entités NLU extraites
+            raw_text: Le texte brut de l'utilisateur
+            user_name: Le nom de l'utilisateur reconnu par reconnaissance faciale
         """
+        # Vérifier que l'utilisateur est reconnu (adhérent)
+        if not user_name:
+            text = "Désolé, je ne vous ai pas reconnu. Vous devez d'abord vous inscrire comme adhérent avant de pouvoir réserver. Veuillez vous inscrire et revenir ensuite."
+            self._append_message(session_id, "assistant", text)
+            return text, {"type": "booking_error", "reason": "user_not_recognized"}
+        
         slots = self._get_booking_slots(session_id)
+        
+        # Sauvegarder le nom d'utilisateur dans les slots dès le départ
+        if "user_name" not in slots:
+            slots["user_name"] = user_name
+            self._set_booking_slots(session_id, slots)
+            print(f"[BOOKING] Utilisateur reconnu: {user_name}")
 
         # Extraire les nouveaux slots depuis le message courant
         new_slots = self._extract_booking_entities(entities, raw_text)
@@ -468,6 +534,8 @@ class DialogManager:
         activite = slots.get("activite", "")
         jour = slots.get("jour", "?")
         heure = slots.get("heure", "?")
+        user_name = slots.get("user_name", "Utilisateur inconnu")
+        
         heure_fin = parse_heure_to_minutes(heure) + 60
         heure_fin = parse_minutes_to_heure(heure_fin)
 
@@ -493,13 +561,14 @@ class DialogManager:
             self._append_message(session_id, "assistant", text)
             return text, {"type": "booking_no_availability"}
 
-        text = "Parfait ! Je confirme votre réservation de la salle {}{} le {} de {} à {}. Souhaitez-vous autre chose ?".format(
-            salle_nom, activite_str, jour, heure, heure_fin
+        text = "Parfait {} ! Je confirme votre réservation de la salle {}{} le {} de {} à {}. Souhaitez-vous autre chose ?".format(
+            user_name, salle_nom, activite_str, jour, heure, heure_fin
         )
 
         actions = {
             "type": "booking_confirmed",
             "booking": {
+                "user_name": user_name,
                 "salle_id": str(salle_id),
                 "salle_nom": salle_nom,
                 "activite": activite,
@@ -511,16 +580,19 @@ class DialogManager:
 
         # Enregistrer avec l'ObjectId de la salle
         try:
+            user_name = slots.get("user_name", "Inconnu")
             reservation_data = {
+                "user_name": user_name,
                 "salle": salle_id,
                 "activite": activite,
                 "jour": jour,
                 "heure_debut": heure,
                 "heure_fin": heure_fin,
                 "statut": "confirmee",
+                "date_reservation": datetime.now(),  # Ajouter la date/heure de création
             }
             db.get_collection("reservations").insert_one(reservation_data)
-            print("[BookingFlow] Réservation enregistrée:", reservation_data)
+            print("[BookingFlow] Réservation enregistrée pour l'utilisateur '{}': {}".format(user_name, reservation_data))
         except Exception as e:
             print("[BookingFlow] Erreur lors de l'enregistrement:", e)
 
@@ -560,6 +632,14 @@ class DialogManager:
         if self._is_booking_in_progress(session_id):
             slots = self._get_booking_slots(session_id)
             print("[DEBUG DM] Réservation en cours, slots actuels:", slots)
+            
+            # Vérifier que l'utilisateur est toujours reconnu
+            stored_user_name = slots.get("user_name")
+            if not stored_user_name:
+                text = "Erreur: l'utilisateur n'est pas défini pour cette réservation. Veuillez recommencer."
+                self._append_message(session_id, "assistant", text)
+                self._clear_booking_slots(session_id)
+                return text, {"type": "booking_error", "reason": "user_not_found"}
 
             # Si on attend un choix de salle
             if slots.get("_awaiting_salle_choice"):
@@ -596,13 +676,187 @@ class DialogManager:
                     return text, {"type": "booking_choose_salle", "current_slots": slots}
 
             # Sinon, continuer le slot filling normal (l'utilisateur donne le jour, l'heure, etc.)
-            return self._handle_booking_flow(session_id, intent, entities, user_text)
+            return self._handle_booking_flow(session_id, intent, entities, user_text, user_name)
 
         # ─── NOUVELLE RÉSERVATION ───
         if intent == "book_activity":
             # Initialiser les slots et démarrer le flux
             self._set_booking_slots(session_id, {})
-            return self._handle_booking_flow(session_id, intent, entities, user_text)
+            return self._handle_booking_flow(session_id, intent, entities, user_text, user_name)
+        
+        # ─── ANNULATION DE RÉSERVATION ───
+        if intent == "cancel_booking":
+            # Vérifier que l'utilisateur est reconnu
+            if not user_name:
+                text = "Désolé, je ne vous ai pas reconnu. Je ne peux pas annuler votre réservation sans confirmation d'identité."
+                self._append_message(session_id, "assistant", text)
+                return text, {"type": "cancel_error", "reason": "user_not_recognized"}
+            
+            # Récupérer les réservations actives de l'utilisateur
+            reservations = self._get_user_reservations(user_name)
+            
+            if not reservations:
+                text = "Vous n'avez pas de réservations actives à annuler."
+                self._append_message(session_id, "assistant", text)
+                return text, {"type": "no_reservation_to_cancel"}
+            
+            if len(reservations) == 1:
+                # Une seule réservation : demander confirmation
+                reservation = reservations[0]
+                salle_id = reservation.get("salle")
+                salle_doc = db.get_collection("salle").find_one({"_id": salle_id}) if salle_id else {}
+                salle_nom = salle_doc.get("nom", "inconnue") if salle_doc else "inconnue"
+                
+                jour = reservation.get("jour", "?")
+                heure_debut = reservation.get("heure_debut", "?")
+                heure_fin = reservation.get("heure_fin", "?")
+                activite = reservation.get("activite", "")
+                
+                activite_str = " ({})".format(activite) if activite else ""
+                
+                text = "Je vais annuler votre réservation de la salle {}{} le {} de {} à {}. Confirmez-vous ?".format(
+                    salle_nom, activite_str, jour, heure_debut, heure_fin
+                )
+                
+                # Marquer qu'une annulation est en attente de confirmation
+                self._set_cancellation_flow(session_id, {
+                    "user_name": user_name,
+                    "reservation_id": str(reservation.get("_id")),
+                    "awaiting_confirmation": True,
+                    "salle_nom": salle_nom,
+                    "jour": jour,
+                    "heure_debut": heure_debut,
+                    "heure_fin": heure_fin,
+                    "activite": activite
+                })
+                
+                self._append_message(session_id, "assistant", text)
+                return text, {
+                    "type": "cancel_confirmation",
+                    "reservation": {
+                        "salle": salle_nom,
+                        "jour": jour,
+                        "heure_debut": heure_debut,
+                        "heure_fin": heure_fin,
+                        "activite": activite
+                    }
+                }
+            else:
+                # Plusieurs réservations : demander laquelle annuler
+                reservation_list = []
+                for r in reservations:
+                    salle_id = r.get("salle")
+                    salle_doc = db.get_collection("salle").find_one({"_id": salle_id}) if salle_id else {}
+                    salle_nom = salle_doc.get("nom", "inconnue") if salle_doc else "inconnue"
+                    jour = r.get("jour", "?")
+                    heure_debut = r.get("heure_debut", "?")
+                    reservation_list.append({
+                        "id": str(r.get("_id")),
+                        "salle": salle_nom,
+                        "jour": jour,
+                        "heure_debut": heure_debut
+                    })
+                
+                # Préparer la question
+                res_descriptions = [
+                    "{} ({} à {})".format(r["salle"], r["jour"], r["heure_debut"])
+                    for r in reservation_list
+                ]
+                
+                text = "Vous avez {} réservations actives : {}. Laquelle voulez-vous annuler ?".format(
+                    len(reservations), ", ".join(res_descriptions)
+                )
+                
+                # Marquer qu'on attend le choix
+                self._set_cancellation_flow(session_id, {
+                    "user_name": user_name,
+                    "awaiting_choice": True,
+                    "reservations": reservation_list
+                })
+                
+                self._append_message(session_id, "assistant", text)
+                return text, {
+                    "type": "cancel_choose_reservation",
+                    "reservations": reservation_list
+                }
+        
+        # ─── CONTINUATION DU FLUX D'ANNULATION ───
+        if self._is_cancellation_in_progress(session_id):
+            session = self.sessions.get(session_id)
+            cancellation_flow = session.get("cancellation_flow", {})
+            
+            if cancellation_flow.get("awaiting_confirmation"):
+                # L'utilisateur doit confirmer l'annulation
+                user_text_lower = user_text.lower()
+                
+                # Chercher une confirmation (oui, confirme, etc.) ou une annulation (non, non merci)
+                if re.search(r'\b(oui|ouais|d\'accord|ok|c\'est bon|confirme|annule|valide|yes)\b', user_text_lower):
+                    # Confirmation reçue : procéder à l'annulation
+                    reservation_id = cancellation_flow.get("reservation_id")
+                    if self._cancel_booking(reservation_id):
+                        salle = cancellation_flow.get("salle_nom")
+                        jour = cancellation_flow.get("jour")
+                        heure = cancellation_flow.get("heure_debut")
+                        
+                        text = "Votre réservation pour la salle {} le {} à {} a été annulée avec succès.".format(
+                            salle, jour, heure
+                        )
+                        self._clear_cancellation_flow(session_id)
+                        self._append_message(session_id, "assistant", text)
+                        return text, {"type": "cancel_success"}
+                    else:
+                        text = "Une erreur s'est produite lors de l'annulation. Veuillez réessayer."
+                        self._clear_cancellation_flow(session_id)
+                        self._append_message(session_id, "assistant", text)
+                        return text, {"type": "cancel_error", "reason": "database_error"}
+                
+                elif re.search(r'\b(non|pas|annule pas|annuler pas|ne.*pas|n\'annule)\b', user_text_lower):
+                    # Annulation du flux
+                    text = "D'accord, la réservation n'a pas été annulée."
+                    self._clear_cancellation_flow(session_id)
+                    self._append_message(session_id, "assistant", text)
+                    return text, {"type": "cancel_aborted"}
+                else:
+                    # Réponse non comprise
+                    text = "Je n'ai pas compris votre réponse. Confirmez-vous l'annulation ? (oui/non)"
+                    self._append_message(session_id, "assistant", text)
+                    return text, {"type": "cancel_confirmation", "awaiting_answer": True}
+            
+            elif cancellation_flow.get("awaiting_choice"):
+                # L'utilisateur doit choisir quelle réservation annuler
+                reservations = cancellation_flow.get("reservations", [])
+                user_text_lower = user_text.lower()
+                
+                # Chercher une correspondance avec les réservations (salle, jour, heure)
+                chosen_reservation = None
+                for res in reservations:
+                    salle = res["salle"].lower()
+                    jour = res["jour"].lower()
+                    if salle in user_text_lower or jour in user_text_lower:
+                        chosen_reservation = res
+                        break
+                
+                if chosen_reservation:
+                    # Demander confirmation
+                    text = "Je vais annuler votre réservation pour la salle {} le {} à {}. Confirmez-vous ?".format(
+                        chosen_reservation["salle"], chosen_reservation["jour"], chosen_reservation["heure_debut"]
+                    )
+                    
+                    cancellation_flow["awaiting_confirmation"] = True
+                    cancellation_flow["reservation_id"] = chosen_reservation["id"]
+                    cancellation_flow["salle_nom"] = chosen_reservation["salle"]
+                    cancellation_flow["jour"] = chosen_reservation["jour"]
+                    cancellation_flow["heure_debut"] = chosen_reservation["heure_debut"]
+                    cancellation_flow.pop("awaiting_choice", None)
+                    
+                    self._set_cancellation_flow(session_id, cancellation_flow)
+                    self._append_message(session_id, "assistant", text)
+                    return text, {"type": "cancel_confirmation"}
+                else:
+                    text = "Je n'ai pas compris votre choix. Quelle réservation souhaitez-vous annuler ?"
+                    self._append_message(session_id, "assistant", text)
+                    return text, {"type": "cancel_choose_reservation"}
+        
         # --- Greeting ---
         if intent == "greeting":
             if user_name:

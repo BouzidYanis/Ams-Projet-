@@ -9,10 +9,12 @@ import uvicorn
 import shutil
 import os
 import json
+from datetime import datetime
 
 from app.nlu import NLU
 from app.dialog_manager import DialogManager
 from app.sessions import SessionStore
+from app.DB_access import DatabaseMongo
 from app.speech import ASRModule
 
 from app.face import verify_endpoint, VerifyResponse
@@ -80,6 +82,8 @@ nlu = NLU()
 sessions = SessionStore()
 dialog = DialogManager(sessions)
 asr  = ASRModule(model_size="medium")
+db = DatabaseMongo()
+
 class ParseRequest(BaseModel):
     text: str
     lang: Optional[str] = "fr"
@@ -284,6 +288,47 @@ def reserver_salle_endpoint(req: ReservationRequest):
         reservation_id = reserver_salle(req.model_dump())
         return {"status": "success", "reservation_id": str(reservation_id)}
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/v1/cancel_reservation/{reservation_id}")
+def cancel_reservation_endpoint(reservation_id: str, user_name: Optional[str] = None):
+    """Annule une réservation par son ID"""
+    from bson import ObjectId
+    try:
+        # Vérifier que la réservation appartient à l'utilisateur (optionnel mais recommandé)
+        reservation = db.get_collection("reservations").find_one({"_id": ObjectId(reservation_id)})
+        
+        if not reservation:
+            raise HTTPException(status_code=404, detail="Réservation non trouvée")
+        
+        # Vérifier l'utilisateur si fourni
+        if user_name and reservation.get("user_name") != user_name:
+            raise HTTPException(status_code=403, detail="Vous n'avez pas accès à cette réservation")
+        
+        # Vérifier que la réservation n'est pas déjà annulée
+        if reservation.get("statut") == "annulee":
+            raise HTTPException(status_code=400, detail="Cette réservation est déjà annulée")
+        
+        # Effectuer l'annulation
+        result = db.get_collection("reservations").update_one(
+            {"_id": ObjectId(reservation_id)},
+            {"$set": {"statut": "annulee", "date_annulation": datetime.now()}}
+        )
+        
+        if result.modified_count > 0:
+            return {
+                "status": "success",
+                "message": "Réservation annulée avec succès",
+                "reservation_id": reservation_id
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Erreur lors de l'annulation")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Erreur annulation: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
