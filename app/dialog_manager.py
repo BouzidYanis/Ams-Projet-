@@ -11,6 +11,8 @@ from app.navigation import get_navigation_instructions
 import os
 import json
 import random
+import re
+from datetime import datetime, timedelta
 from .tools import parse_heure_to_minutes, parse_minutes_to_heure
 from app.DB_access import DatabaseMongo
 
@@ -44,6 +46,138 @@ RULES = {
 }
 
 llm_openai = "llm_openai_config.json"
+
+
+def convert_to_date(date_str: str) -> str:
+    """
+    Convertit une chaîne de texte en date au format YYYY-MM-DD.
+    
+    Supporte les formats suivants:
+    - Jour de semaine: "lundi", "mardi", etc. → prochaine date de ce jour
+    - Relatif: "demain", "aujourd'hui", "après-demain"
+    - Date textuelle: "21 avril 2026", "21 avril", "17 mars", "17 marse" (avec fautes orthographe)
+    - Formats numériques: "21/04/2026", "21-04-2026", "21/4/2026"
+    - Format ISO: "2026-04-21" (retourné tel quel)
+    
+    Tous les formats sont convertis en YYYY-MM-DD pour assurer l'uniformité.
+    
+    Args:
+        date_str: Chaîne de date/jour à convertir
+        
+    Returns:
+        Date au format YYYY-MM-DD, ou la chaîne originale si impossible à convertir
+    """
+    if not date_str:
+        return date_str
+    
+    date_str = str(date_str).strip().lower()
+    today = datetime.now().date()
+    
+    # === Format ISO YYYY-MM-DD (déjà correct)
+    try:
+        if re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
+            datetime.strptime(date_str, '%Y-%m-%d')
+            return date_str
+    except ValueError:
+        pass
+    
+    # === Aujourd'hui
+    if date_str in ["aujourd'hui", "aujourd hui", "aujd", "today"]:
+        return today.isoformat()
+    
+    # === Demain
+    if date_str == "demain":
+        tomorrow = today + timedelta(days=1)
+        return tomorrow.isoformat()
+    
+    # === Après-demain
+    if re.search(r'après[- ]?demain', date_str):
+        after_tomorrow = today + timedelta(days=2)
+        return after_tomorrow.isoformat()
+    
+    # === Jour de la semaine (lundi, mardi, etc.)
+    days_of_week = {
+        'lundi': 0, 'lun': 0,
+        'mardi': 1, 'mar': 1,
+        'mercredi': 2, 'mer': 2,
+        'jeudi': 3, 'jeu': 3,
+        'vendredi': 4, 'ven': 4,
+        'samedi': 5, 'sam': 5,
+        'dimanche': 6, 'dim': 6
+    }
+    
+    for day_name, day_num in days_of_week.items():
+        if date_str == day_name or date_str.startswith(day_name):
+            current_weekday = today.weekday()
+            days_ahead = day_num - current_weekday
+            
+            if days_ahead <= 0:
+                days_ahead += 7
+            
+            next_date = today + timedelta(days=days_ahead)
+            return next_date.isoformat()
+    
+    # === Formats de date textuels: "21 avril 2026", "21 avril", "17 mars", etc.
+    # Accepte aussi les variantes et fautes orthographe (marse, avril, etc.)
+    month_map = {
+        'janvier': 1, 'février': 2, 'fevrier': 2,
+        'mars': 3, 'marse': 3, 'marse': 3,  # accepte la faute "marse"
+        'avril': 4, 'avri': 4,
+        'mai': 5,
+        'juin': 6, 'juin': 6,
+        'juillet': 7, 'juill': 7,
+        'août': 8, 'aout': 8,
+        'septembre': 9, 'sept': 9,
+        'octobre': 10, 'oct': 10,
+        'novembre': 11, 'nov': 11,
+        'décembre': 12, 'decembre': 12, 'déc': 12, 'dec': 12
+    }
+    
+    # Pattern: "21 avril 2026" ou "21 avril" ou toute variante
+    # La regex accepte n'importe quelle séquence de lettres comme mois
+    match = re.search(r'(\d{1,2})\s+([a-zàâäéèêëïîôöùûüœæçñ]+)(?:\s+(\d{4}))?', date_str)
+    if match:
+        day = int(match.group(1))
+        month_str = match.group(2).lower()
+        year = int(match.group(3)) if match.group(3) else today.year
+        
+        # Chercher le mois dans la map
+        month = month_map.get(month_str)
+        
+        # Si pas trouvé exactement, essayer une correspondance partielle
+        if month is None:
+            for month_name, month_num in month_map.items():
+                if month_str.startswith(month_name[:3]) or month_name.startswith(month_str[:3]):
+                    month = month_num
+                    break
+        
+        if month:
+            try:
+                parsed_date = datetime(year, month, day).date()
+                return parsed_date.isoformat()
+            except (ValueError, TypeError):
+                pass
+    
+    # === Formats numériques: "21/04/2026", "21-04-2026", "21/4/2026"
+    match = re.match(r'(\d{1,2})[/\-](\d{1,2})(?:[/\-](\d{2,4}))?', date_str)
+    if match:
+        day = int(match.group(1))
+        month = int(match.group(2))
+        year = int(match.group(3)) if match.group(3) else today.year
+        
+        # Gérer les années à 2 chiffres
+        if year < 100:
+            year = 2000 + year if year < 50 else 1900 + year
+        
+        try:
+            parsed_date = datetime(year, month, day).date()
+            return parsed_date.isoformat()
+        except (ValueError, TypeError):
+            pass
+    
+    # === Cas non-reconnus : retourner la chaîne originale
+    return date_str
+
 
 class DialogManager:
     def __init__(self, sessions: SessionStore, llm_config_path: str = None):
@@ -135,7 +269,6 @@ class DialogManager:
         # --- Jour / Date ---
         times = entities.get("time", [])
         # On essaie aussi de détecter une date dans le texte brut
-        import re
         date_patterns = [
             r'\b(\d{1,2})\s+(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\b',
             r'\b(\d{1,2})[/\-](\d{1,2})(?:[/\-](\d{2,4}))?\b',
@@ -184,6 +317,11 @@ class DialogManager:
                     else:
                         found["heure"] = t
                     break
+
+        # === Convertir le jour en date YYYY-MM-DD ===
+        if "jour" in found and found["jour"]:
+            found["jour"] = convert_to_date(found["jour"])
+            print(f"[BOOKING] Jour converti en date: {found['jour']}")
 
         return found
 
