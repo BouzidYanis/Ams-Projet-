@@ -420,9 +420,14 @@
     </div>
 
     <script>
-        // Utiliser le port 8001 quel que soit l'hôte
-        const BACKEND_URL = window.location.protocol + '//' + window.location.hostname + ':8002';
-        const SESSION_ID = new URLSearchParams(window.location.search).get('session_id') || 'default_session';
+        // Récupérer les paramètres de l'URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const SESSION_ID = urlParams.get('session_id') || 'default_session';
+        
+        // Extraire le hostname à partir du serveur_ip (accepte http://localhost:8001 ou localhost)
+        let serverIpParam = urlParams.get('server_ip') || window.location.hostname;
+        const SERVER_IP = serverIpParam.replace(/^https?:\/\//, '').split(':')[0];
+        const BACKEND_URL = window.location.protocol + '//' + SERVER_IP + ':8001';
         
         let ws = null;
         let reconnectAttempts = 0;
@@ -445,8 +450,7 @@
         // Initialiser WebSocket
         function initWebSocket() {
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsHost = window.location.hostname;
-            const wsUrl = `${wsProtocol}//${wsHost}:8001/ws/reservation/${SESSION_ID}`;
+            const wsUrl = `${wsProtocol}//${SERVER_IP}:8001/ws/reservation/${SESSION_ID}`;
             
             console.log('[WS] Tentative de connexion à:', wsUrl);
             
