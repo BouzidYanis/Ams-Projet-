@@ -16,11 +16,11 @@ from affichage_dynamique import PepperWebDisplayService
 from nav import Navigation
 
 # ─── CONFIGURATION ───
-PEPPER_IP = "192.168.13.209"
+PEPPER_IP = "192.168.13.228"
 PEPPER_PORT = 9559
 
 # Le serveur FastAPI (NLU + Dialog + ASR)
-SERVER_URL = "http://localhost:8002"
+SERVER_URL = "http://localhost:8001"
 ASR_URL = SERVER_URL + "/v1/asr"
 RESPOND_URL = SERVER_URL + "/v1/respond"
 

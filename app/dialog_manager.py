@@ -197,7 +197,7 @@ class DialogManager:
         history = session.setdefault("history", [])
         history.append({"role": role, "content": content})
         # limit history length to avoid huge prompts (keep last N pairs)
-        max_msgs = 20
+        max_msgs = 10
         if len(history) > max_msgs:
             # keep the last max_msgs entries
             session["history"] = history[-max_msgs:]
@@ -290,6 +290,43 @@ class DialogManager:
                 "ouverture_heure": "08h00",
                 "fermeture_heure": "18h00",
             }
+
+    def _get_activity_pricing(self, activite_name: str = None) -> Dict[str, Any]:
+        """Récupère les tarifs des activités depuis MongoDB"""
+        try:
+            if activite_name:
+                # Chercher une activité spécifique
+                activite = db.get_collection("activite").find_one(
+                    {"nom": {"$regex": f"^{activite_name}$", "$options": "i"}},
+                    {"nom": 1, "tarif": 1, "description": 1}
+                )
+                if activite:
+                    return {
+                        "activite": activite.get("nom", ""),
+                        "tarif": activite.get("tarif", "Non spécifié"),
+                        "description": activite.get("description", "")
+                    }
+                else:
+                    return None
+            else:
+                # Récupérer tous les tarifs
+                activites = list(db.get_collection("activite").find(
+                    {},
+                    {"nom": 1, "tarif": 1}
+                ))
+                
+                if activites:
+                    return {
+                        "all_activities": [
+                            {"nom": a.get("nom"), "tarif": a.get("tarif", "Non spécifié")}
+                            for a in activites
+                        ]
+                    }
+                else:
+                    return None
+        except Exception as e:
+            print(f"[ERROR] Erreur lors de la récupération des tarifs: {e}")
+            return None
 
     def _is_room_booked(self, salle: str, jour: str, heure_debut: str,heure_fin:str) -> bool:
         """Vérifie dans la base de données si la salle est déjà réservée pour le créneau donné."""
@@ -960,6 +997,92 @@ class DialogManager:
                 "hours": horaires
             }
             return text, actions
+        
+        # --- Tarifs des activités ---
+        if intent == "ask_pricing":
+            # Essayer d'extraire le nom de l'activité
+            activities = entities.get("activity", [])
+            activite_name = activities[0] if activities else None
+            
+            if activite_name:
+                # Récupérer le tarif d'une activité spécifique
+                pricing_info = self._get_activity_pricing(activite_name)
+                
+                if pricing_info:
+                    activite = pricing_info.get("activite", "")
+                    tarif = pricing_info.get("tarif", "Non spécifié")
+                    context_msg = "L'utilisateur demande le tarif pour {}. Tarif: {}".format(activite, tarif)
+                    
+                    self._append_message(session_id, "assistant", context_msg)
+                    try:
+                        print("[DialogManager] ask_pricing: Appel LLM pour reformuler le tarif")
+                        assistant_text = self.llm.generate_chat(self.system_prompt, history)
+                        if assistant_text and assistant_text.strip():
+                            session = self.sessions.get(session_id)
+                            session["history"][-1] = {"role": "assistant", "content": assistant_text}
+                            self.sessions.update(session_id, session)
+                            actions = {
+                                "type": "provide_pricing",
+                                "activity": activite,
+                                "pricing": pricing_info
+                            }
+                            return assistant_text, actions
+                    except Exception as e:
+                        print("[DialogManager] LLM error for pricing:", e)
+                    
+                    # Fallback si LLM échoue
+                    text = "Le tarif pour {} est: {}.".format(activite, tarif)
+                    self._append_message(session_id, "assistant", text)
+                    actions = {
+                        "type": "provide_pricing",
+                        "activity": activite,
+                        "pricing": pricing_info
+                    }
+                    return text, actions
+                else:
+                    text = "Désolé, je n'ai pas trouvé l'activité '{}'.".format(activite_name)
+                    self._append_message(session_id, "assistant", text)
+                    return text, {"type": "pricing_not_found"}
+            else:
+                # Afficher tous les tarifs
+                pricing_info = self._get_activity_pricing()
+                
+                if pricing_info and pricing_info.get("all_activities"):
+                    all_activities = pricing_info.get("all_activities", [])
+                    activities_list = ", ".join(["{} ({})".format(a["nom"], a["tarif"]) for a in all_activities])
+                    
+                    context_msg = "L'utilisateur demande les tarifs d'inscription. Voici les activités et leurs tarifs: {}".format(activities_list)
+                    
+                    self._append_message(session_id, "assistant", context_msg)
+                    try:
+                        print("[DialogManager] ask_pricing (all): Appel LLM pour reformuler les tarifs")
+                        assistant_text = self.llm.generate_chat(self.system_prompt, history)
+                        if assistant_text and assistant_text.strip():
+                            session = self.sessions.get(session_id)
+                            session["history"][-1] = {"role": "assistant", "content": assistant_text}
+                            self.sessions.update(session_id, session)
+                            actions = {
+                                "type": "provide_all_pricing",
+                                "activities": all_activities
+                            }
+                            return assistant_text, actions
+                    except Exception as e:
+                        print("[DialogManager] LLM error for all pricing:", e)
+                    
+                    # Fallback si LLM échoue
+                    text = "Voici nos tarifs d'inscription:\n" + "\n".join([
+                        "• {}: {}".format(a["nom"], a["tarif"]) for a in all_activities
+                    ])
+                    self._append_message(session_id, "assistant", text)
+                    actions = {
+                        "type": "provide_all_pricing",
+                        "activities": all_activities
+                    }
+                    return text, actions
+                else:
+                    text = "Désolé, les tarifs ne sont pas disponibles pour le moment."
+                    self._append_message(session_id, "assistant", text)
+                    return text, {"type": "pricing_error"}
         
         # --- Navigate ---
         if intent == "navigate":

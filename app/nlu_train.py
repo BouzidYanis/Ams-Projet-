@@ -32,6 +32,14 @@ INTENT_PATTERNS = {
         r"\b(liste|voir).*\b(activité|sport|cours)\b",
     ],
     
+    "ask_pricing": [
+        r"\b(tarif|prix|coût|combien|c'est combien|ça coûte|combien ça coûte)\b",
+        r"\b(tarif|prix).*\b(activité|cours|sport|inscription|adhésion)\b",
+        r"\b(quel|combien).*\b(tarif|prix).*\b(pour|fitness|yoga|natation|tennis|basketball)\b",
+        r"\b(inscription|adhésion).*\b(tarif|prix|coût)\b",
+        r"\b(abonnement|forfait|package)\b",
+    ],
+    
     "demander_lieu": [
         r"\b(où|trouver|situé|trouve|aller)\b",
         r"\b(vestiaire|salle|piscine|terrain|accueil|toilette|casier)\b",
@@ -217,6 +225,14 @@ if __name__ == "__main__":
             "Je voudrais des infos sur les cours de tennis",
             "C'est quoi comme sport ici ?",
             "Liste des activités disponibles",
+        ],
+        
+        "ask_pricing": [
+            "Quel est le tarif pour le fitness ?",
+            "Combien ça coûte pour la natation ?",
+            "C'est combien l'inscription au tennis ?",
+            "Quels sont les tarifs d'abonnement ?",
+            "Ça coûte combien pour un cours ?",
         ],
         
         "demander_lieu": [
