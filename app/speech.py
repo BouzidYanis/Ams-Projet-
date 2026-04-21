@@ -32,7 +32,7 @@ import webrtcvad
 from faster_whisper import WhisperModel
 
 # --- CONFIGURATION ---
-LOGPROB_THRESHOLD = -1.5  # Plus strict : rejette les transcriptions peu confiantes
+LOGPROB_THRESHOLD = -1.0  # Plus strict : rejette les transcriptions peu confiantes
 NOSPEECH_THRESHOLD = 0.6   # Plus strict : rejette si trop de silence/bruit détecté
 VAD_AGGRESSIVENESS = 3    # 1 (relaxed) to 3 (aggressive) - MAX pour ignorer les petits bruits
 PADDING_FRAMES = 5        # ~150ms of buffer around speech - réduit pour être plus strict

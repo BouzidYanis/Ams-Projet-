@@ -10,6 +10,8 @@ import datetime
 import os
 import shutil
 
+import qi
+
 from ASREngine import ASREngine
 from audio_manager import AudioSense, AudioInputs
 from network_client import NetworkClient
@@ -21,7 +23,7 @@ from PepperOrchestrator import PepperConnector, PepperAudioCapture
 # =================================================================
 
 # 1. NETWORK CONFIG (Choose your active server)
-SERVER_URL = "http://localhost:8000"
+SERVER_URL = "http://localhost:8001"
 # SERVER_URL = "http://192.168.1.74:8000"
 # SERVER_URL = "http://10.60.55.34:8000"
 
@@ -33,7 +35,7 @@ PHONE_URL = "http://10.126.8.53:8080/audio.wav"
 # PHONE_URL = "http://10.60.55.196:8080/audio.wav"
 
 # 3. ROBOT HARDWARE CONFIG
-PEPPER_IP = "192.168.13.202"
+PEPPER_IP = "192.168.13.228"
 # PEPPER_IP = "127.0.0.1" # For local simulation (Choregraphe)
 PEPPER_PORT = 9559
 
@@ -87,6 +89,10 @@ class PepperAppMain():
             self.connector = PepperConnector(PEPPER_IP, PEPPER_PORT)
             if self.connector.connect():
                self.pepper_spec = PepperAudioCapture(self.connector.get_session())
+               self.session = qi.Session()
+               self.session.connect("tcp://{}:{}".format(PEPPER_IP, PEPPER_PORT))
+               self.tts = self.session.service("ALTextToSpeech")
+               self.tts.setLanguage("French")
             pass
             
         self.audio_inputs = AudioInputs(mode=MODE, pepper_specialist=self.pepper_spec, phone_url=PHONE_URL)
@@ -105,6 +111,8 @@ class PepperAppMain():
         self.is_running = True
         self.last_interaction = time.time()
         self.session_id = None
+
+
     
     def start(self):
         """Démarre le moteur ASR et la boucle de contrôle principale."""
@@ -183,6 +191,7 @@ class PepperAppMain():
         if response:
             self.session_id = response.get("session_id")
             answer = response.get("text", "")
+            self.tts.say(answer)
             print(u"===> Robot : {}".format(answer).encode('utf-8'))
             self._log_state("PEPPER_REPLY", pepper_answer=answer)
 
