@@ -30,6 +30,7 @@ class FaceMatch(BaseModel):
     distance: float
     nom: Optional[str] = None
     prenom: Optional[str] = None
+    role: Optional[str] = None
 
 class VerifyResponse(BaseModel):
     matched: bool
@@ -95,7 +96,7 @@ def _encode_first_face(image: np.ndarray) -> np.ndarray:
     return encodings[0]
 
 def _best_match(
-    known: List[Tuple[str, np.ndarray, Optional[str], Optional[str]]],
+    known: List[Tuple[str, np.ndarray, Optional[str], Optional[str], Optional[str]]],
     unknown_encoding: np.ndarray,
 ) -> Optional[FaceMatch]:
     if not known:
@@ -105,8 +106,8 @@ def _best_match(
     best_idx = int(np.argmin(distances))
     best_distance = float(distances[best_idx])
     if best_distance <= FACE_TOLERANCE:
-        best_id, _, best_nom, best_prenom = known[best_idx]
-        return FaceMatch(id=best_id, distance=best_distance, nom=best_nom, prenom=best_prenom)
+        best_id, _, best_nom, best_prenom, best_role = known[best_idx]
+        return FaceMatch(id=best_id, distance=best_distance, nom=best_nom, prenom=best_prenom, role=best_role)
     return None
 
 
@@ -116,9 +117,9 @@ def verify_endpoint(image: UploadFile = File(...)) -> VerifyResponse:
     unknown_encoding = _encode_first_face(img)
 
     col = _get_collection()
-    cursor = col.find({}, {"photo": 1, "nom": 1, "prenom": 1})
+    cursor = col.find({}, {"photo": 1, "nom": 1, "prenom": 1, "role": 1})
 
-    known: List[Tuple[str, np.ndarray, Optional[str], Optional[str]]] = []
+    known: List[Tuple[str, np.ndarray, Optional[str], Optional[str], Optional[str]]] = []
     checked = 0
     skipped = 0
 
@@ -128,6 +129,7 @@ def verify_endpoint(image: UploadFile = File(...)) -> VerifyResponse:
         photo_ref = doc.get("photo")
         nom = doc.get("nom")
         prenom = doc.get("prenom")
+        role = doc.get("role", "utilisateur")  # Rôle par défaut
         if not photo_ref:
             skipped += 1
             continue
@@ -139,7 +141,7 @@ def verify_endpoint(image: UploadFile = File(...)) -> VerifyResponse:
                 continue
             ref_enc = encodings[0]
             if ref_enc.shape[0] == 128:
-                known.append((doc_id, ref_enc, nom, prenom))
+                known.append((doc_id, ref_enc, nom, prenom, role))
             else:
                 skipped += 1
         except Exception:

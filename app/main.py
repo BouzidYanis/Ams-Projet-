@@ -104,7 +104,8 @@ class RespondRequest(BaseModel):
     text: str
     lang: Optional[str] = "fr"
     session_id: Optional[str] = None
-    user_name: Optional[str] = None  # Nouveau champ : nom reconnu par la caméra
+    user_name: Optional[str] = None  # Nom reconnu par la caméra
+    user_role: Optional[str] = None   # Rôle de l'utilisateur (coach, admin, etc.)
 
 
 class Creneau(BaseModel):
@@ -213,9 +214,11 @@ async def respond(req: RespondRequest):
     parse_result = nlu.parse(req.text)
     print(f"[RESPOND] NLU Résultat: intent={parse_result['intent']}, confidence={parse_result['confidence']}")
 
-    # Injecter le nom dans le parse_result si fourni
+    # Injecter le nom et le rôle dans le parse_result si fournis
     if req.user_name:
         parse_result["user_name"] = req.user_name
+    if req.user_role:
+        parse_result["user_role"] = req.user_role
 
     session_data = sessions.get(session_id)
     booking_in_progress = "booking_slots" in session_data

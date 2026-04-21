@@ -266,6 +266,31 @@ class DialogManager:
         session.pop("cancellation_flow", None)
         self.sessions.update(session_id, session)
 
+    def _get_center_hours(self) -> Dict[str, Any]:
+        """Récupère les horaires d'ouverture du centre depuis MongoDB"""
+        try:
+            # Chercher le document des horaires du centre (type: "horaires")
+            horaires = db.get_collection("config").find_one({"type": "horaires"})
+            
+            if horaires:
+                horaire_ouverture = horaires.get("horaire_ouverture", "08:00")
+                horaire_fermeture = horaires.get("horaire_fermeture", "18:00")
+                return {
+                    "ouverture": horaire_ouverture,
+                    "fermeture": horaire_fermeture,
+                    "ouverture_heure": horaire_ouverture[:2] + "h" + horaire_ouverture[3:],  # "08:00" → "08h00"
+                    "fermeture_heure": horaire_fermeture[:2] + "h" + horaire_fermeture[3:],  # "18:00" → "18h00"
+                }
+        except Exception as e:
+            print(f"[ERROR] Erreur lors de la récupération des horaires: {e}")
+            # Horaires par défaut en cas d'erreur
+            return {
+                "ouverture": "08:00",
+                "fermeture": "18:00",
+                "ouverture_heure": "08h00",
+                "fermeture_heure": "18h00",
+            }
+
     def _is_room_booked(self, salle: str, jour: str, heure_debut: str,heure_fin:str) -> bool:
         """Vérifie dans la base de données si la salle est déjà réservée pour le créneau donné."""
         acitivites_planinng = db.get_collection("activite").find_one(
@@ -618,6 +643,7 @@ class DialogManager:
         entities = parse_result.get("entities", {})
         user_text = parse_result.get("raw_text") or parse_result.get("text") or ""
         user_name = parse_result.get("user_name", None)  # Nom issu de la reconnaissance faciale
+        user_role = parse_result.get("user_role", None)  # Rôle issu de la reconnaissance faciale
 
         # store user message in history
         if user_text:
@@ -860,8 +886,11 @@ class DialogManager:
         # --- Greeting ---
         if intent == "greeting":
             if user_name:
-                # Personne reconnue → laisser le LLM personnaliser la salutation
-                context_msg = "L'utilisateur s'appelle '{}' et me salue. Je dois lui répondre chaleureusement de façon personnalisée.".format(user_name)
+                # Personne reconnue → inclure le rôle dans le contexte
+                if user_role and user_role != "utilisateur":
+                    context_msg = "L'utilisateur s'appelle '{}' et c'est un {}. Il/elle me salue. Je dois lui répondre chaleureusement en mentionnant son rôle.".format(user_name, user_role)
+                else:
+                    context_msg = "L'utilisateur s'appelle '{}' et me salue. Je dois lui répondre chaleureusement de façon personnalisée.".format(user_name)
             else:
                 # Personne inconnue → laisser le LLM générer une présentation appropriée
                 context_msg = "L'utilisateur me salue. Je dois me présenter et expliquer ce que je peux faire."
@@ -881,7 +910,10 @@ class DialogManager:
             
             # Fallback si LLM échoue
             if user_name:
-                text = "Bonjour {} ! Comment puis-je vous aider aujourd'hui ?".format(user_name)
+                if user_role and user_role != "utilisateur":
+                    text = "Bonjour {} {} ! Comment puis-je vous aider aujourd'hui ?".format(user_role, user_name)
+                else:
+                    text = "Bonjour {} ! Comment puis-je vous aider aujourd'hui ?".format(user_name)
             else:
                 text = (
                     "Bonjour ! Je suis Pepper, le robot d'accueil de la salle multisports. "
@@ -890,6 +922,44 @@ class DialogManager:
                 )
             self._append_message(session_id, "assistant", text)
             return text, {}
+        
+        # --- Horaires du centre ---
+        if intent == "demander_heure":
+            horaires = self._get_center_hours()
+            
+            # Construire le message avec les horaires
+            ouverture = horaires["ouverture_heure"]
+            fermeture = horaires["fermeture_heure"]
+            horaires_text = "Le centre est ouvert de {} à {}.".format(ouverture, fermeture)
+            
+            # Laisser le LLM reformuler les horaires
+            context_msg = "L'utilisateur demande les horaires d'ouverture du centre. Horaires: {}".format(horaires_text)
+            self._append_message(session_id, "assistant", context_msg)
+            
+            try:
+                print("[DialogManager] demander_heure: Appel LLM pour reformuler les horaires")
+                assistant_text = self.llm.generate_chat(self.system_prompt, history)
+                if assistant_text and assistant_text.strip():
+                    # Remplacer le message context par la vraie réponse LLM
+                    session = self.sessions.get(session_id)
+                    session["history"][-1] = {"role": "assistant", "content": assistant_text}
+                    self.sessions.update(session_id, session)
+                    actions = {
+                        "type": "provide_hours",
+                        "hours": horaires
+                    }
+                    return assistant_text, actions
+            except Exception as e:
+                print("[DialogManager] LLM error for hours:", e)
+            
+            # Fallback si LLM échoue
+            text = horaires_text
+            self._append_message(session_id, "assistant", text)
+            actions = {
+                "type": "provide_hours",
+                "hours": horaires
+            }
+            return text, actions
         
         # --- Navigate ---
         if intent == "navigate":
