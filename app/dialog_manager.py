@@ -375,7 +375,29 @@ class DialogManager:
         # --- Salle ---
         locations = entities.get("location", [])
         if locations:
-            found["salle"] = locations[0]
+            # Filtrer les locations génériques (pas des vrais noms de salles)
+            generic_terms = ['salle', 'room', 'terrain', 'piscine', 'vestiaire', 'salle de sport', "salle d'accueil", 'accueil']
+            
+            for loc in locations:
+                loc_lower = loc.lower().strip()
+                # Ignorer si c'est juste un terme générique
+                if loc_lower not in generic_terms and len(loc_lower) > 1:
+                    # Vérifier que ce n'est pas juste un numéro sans identifiant
+                    if not loc.isdigit():
+                        found["salle"] = loc
+                        break
+            
+            # Si aucune location valide trouvée, chercher les vrais noms de salle dans le texte
+            if "salle" not in found:
+                salle_patterns = [
+                    r'\b(salle\s+[a-zA-Z0-9])\b',  # "Salle A", "Salle 1"
+                    r'\b([a-zA-Z]\s*(?:pour|de)?\s*(?:yoga|fitness|natation|tennis|basketball|futsal))\b',
+                ]
+                for pattern in salle_patterns:
+                    m = re.search(pattern, raw_text, re.IGNORECASE)
+                    if m:
+                        found["salle"] = m.group(1)
+                        break
 
         # --- Activité (sport) ---
         activities = entities.get("activity", [])
@@ -1130,7 +1152,18 @@ class DialogManager:
                 if pricing_info:
                     activite = pricing_info.get("activite", "")
                     tarif = pricing_info.get("tarif", "Non spécifié")
-                    context_msg = "L'utilisateur demande le tarif pour {}. Tarif: {}".format(activite, tarif)
+                    description = pricing_info.get("description", "")
+                    
+                    # Passer les données exactes au LLM pour qu'il les reformule
+                    # Format strict pour éviter les hallucinations
+                    context_msg = (
+                        "INFORMATION EXACTE À COMMUNIQUER:\n"
+                        "Activité: {}\n"
+                        "Tarif: {} euros\n"
+                        "Description: {}\n"
+                        "\n"
+                        "Réponds à l'utilisateur en utilisant EXACTEMENT le tarif ci-dessus, pas d'autres chiffres."
+                    ).format(activite, tarif, description)
                     
                     self._append_message(session_id, "assistant", context_msg)
                     try:
@@ -1149,8 +1182,10 @@ class DialogManager:
                     except Exception as e:
                         print("[DialogManager] LLM error for pricing:", e)
                     
-                    # Fallback si LLM échoue
-                    text = "Le tarif pour {} est: {}.".format(activite, tarif)
+                    # Si LLM échoue, générer une réponse simple
+                    text = "Le tarif pour {} est de {} euros.".format(activite, tarif)
+                    if description:
+                        text += " ({})".format(description)
                     self._append_message(session_id, "assistant", text)
                     actions = {
                         "type": "provide_pricing",
@@ -1168,9 +1203,16 @@ class DialogManager:
                 
                 if pricing_info and pricing_info.get("all_activities"):
                     all_activities = pricing_info.get("all_activities", [])
-                    activities_list = ", ".join(["{} ({})".format(a["nom"], a["tarif"]) for a in all_activities])
                     
-                    context_msg = "L'utilisateur demande les tarifs d'inscription. Voici les activités et leurs tarifs: {}".format(activities_list)
+                    # Format strict avec toutes les données
+                    activities_list = "\n".join([
+                        "- {}: {} euros".format(a["nom"], a["tarif"]) for a in all_activities
+                    ])
+                    
+                    context_msg = (
+                        "TARIFS EXACTS À COMMUNIQUER:\n{}\n\n"
+                        "Réponds à l'utilisateur en listant EXACTEMENT ces tarifs, pas d'autres chiffres."
+                    ).format(activities_list)
                     
                     self._append_message(session_id, "assistant", context_msg)
                     try:
@@ -1188,9 +1230,9 @@ class DialogManager:
                     except Exception as e:
                         print("[DialogManager] LLM error for all pricing:", e)
                     
-                    # Fallback si LLM échoue
+                    # Si LLM échoue, générer une réponse simple
                     text = "Voici nos tarifs d'inscription:\n" + "\n".join([
-                        "• {}: {}".format(a["nom"], a["tarif"]) for a in all_activities
+                        "• {}: {} euros".format(a["nom"], a["tarif"]) for a in all_activities
                     ])
                     self._append_message(session_id, "assistant", text)
                     actions = {
