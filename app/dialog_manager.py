@@ -1157,12 +1157,14 @@ class DialogManager:
                     # Passer les données exactes au LLM pour qu'il les reformule
                     # Format strict pour éviter les hallucinations
                     context_msg = (
-                        "INFORMATION EXACTE À COMMUNIQUER:\n"
+                        "TARIF D'INSCRIPTION POUR L'ANNÉE:\n"
                         "Activité: {}\n"
-                        "Tarif: {} euros\n"
+                        "Tarif annuel: {} euros par an\n"
                         "Description: {}\n"
                         "\n"
-                        "Réponds à l'utilisateur en utilisant EXACTEMENT le tarif ci-dessus, pas d'autres chiffres."
+                        "L'utilisateur demande le tarif pour cette activité. "
+                        "Réponds en communiquant EXACTEMENT ce tarif annuel, pas d'autres chiffres ou périodes. "
+                        "Sois clair que c'est pour une année d'adhésion."
                     ).format(activite, tarif, description)
                     
                     self._append_message(session_id, "assistant", context_msg)
@@ -1183,7 +1185,7 @@ class DialogManager:
                         print("[DialogManager] LLM error for pricing:", e)
                     
                     # Si LLM échoue, générer une réponse simple
-                    text = "Le tarif pour {} est de {} euros.".format(activite, tarif)
+                    text = "Le tarif d'adhésion annuelle pour {} est de {} euros par an.".format(activite, tarif)
                     if description:
                         text += " ({})".format(description)
                     self._append_message(session_id, "assistant", text)
@@ -1206,12 +1208,14 @@ class DialogManager:
                     
                     # Format strict avec toutes les données
                     activities_list = "\n".join([
-                        "- {}: {} euros".format(a["nom"], a["tarif"]) for a in all_activities
+                        "- {}: {} euros par an".format(a["nom"], a["tarif"]) for a in all_activities
                     ])
                     
                     context_msg = (
-                        "TARIFS EXACTS À COMMUNIQUER:\n{}\n\n"
-                        "Réponds à l'utilisateur en listant EXACTEMENT ces tarifs, pas d'autres chiffres."
+                        "TARIFS D'INSCRIPTION ANNUELS:\n{}\n\n"
+                        "L'utilisateur demande les tarifs d'adhésion aux activités. "
+                        "Réponds en communiquant EXACTEMENT ces tarifs annuels dans ta réponse, pas d'autres chiffres. "
+                        "Sois clair que c'est pour une année d'adhésion complète."
                     ).format(activities_list)
                     
                     self._append_message(session_id, "assistant", context_msg)
@@ -1231,8 +1235,8 @@ class DialogManager:
                         print("[DialogManager] LLM error for all pricing:", e)
                     
                     # Si LLM échoue, générer une réponse simple
-                    text = "Voici nos tarifs d'inscription:\n" + "\n".join([
-                        "• {}: {} euros".format(a["nom"], a["tarif"]) for a in all_activities
+                    text = "Voici nos tarifs d'adhésion annuels:\n" + "\n".join([
+                        "• {}: {} euros par an".format(a["nom"], a["tarif"]) for a in all_activities
                     ])
                     self._append_message(session_id, "assistant", text)
                     actions = {
@@ -1483,22 +1487,54 @@ class DialogManager:
 
         elif intent == "ask_my_reservations":
             # L'utilisateur demande ses réservations
-            if not user_name:
-                text = "Désolé, je ne vous ai pas reconnu. Vous devez d'abord vous authentifier pour consulter vos réservations."
+            
+            # Vérifier si l'utilisateur est authentifié ou s'il a fourni son nom dans la session
+            current_user_name = user_name
+            
+            # Essayer de récupérer le nom depuis la session s'il n'est pas dans la requête
+            if not current_user_name:
+                session = self.sessions.get(session_id)
+                current_user_name = session.get("reservation_user_name")
+            
+            # Si toujours pas de nom, demander à l'utilisateur
+            if not current_user_name:
+                # Message pour demander le nom
+                text = "Pouvez-vous me donner votre nom s'il vous plaît ? Cela m'aidera à localiser vos réservations dans notre base de données."
+                
+                # Marquer qu'on attend le nom pour les réservations
+                session = self.sessions.get(session_id)
+                session["awaiting_user_name_for_reservations"] = True
+                self.sessions.update(session_id, session)
+                
                 self._append_message(session_id, "assistant", text)
-                return text, {"type": "error", "reason": "user_not_authenticated"}
+                return text, {"type": "ask_user_name_for_reservations"}
+            
+            # Vérifier si l'utilisateur a donné son nom suite à la demande
+            if "awaiting_user_name_for_reservations" in self.sessions.get(session_id):
+                # Le user_text devrait contenir le nom
+                current_user_name = user_text.strip()
+                
+                # Sauvegarder le nom dans la session
+                session = self.sessions.get(session_id)
+                session["reservation_user_name"] = current_user_name
+                session.pop("awaiting_user_name_for_reservations", None)
+                self.sessions.update(session_id, session)
+                
+                print(f"[DialogManager] Nom utilisateur sauvegardé pour réservations: {current_user_name}")
             
             try:
                 # Récupérer les réservations futures de l'utilisateur
-                reservations = get_user_future_reservations(user_name, include_past=False)
+                reservations = get_user_future_reservations(current_user_name, include_past=False)
                 
                 if not reservations:
                     # Pas de réservations futures
-                    text = "Vous n'avez pas de réservations à venir. Voulez-vous en faire une ?"
+                    text = f"Vous n'avez pas de réservations à venir, {current_user_name}. Voulez-vous en faire une ?"
                     actions = {
                         "type": "no_future_reservations",
-                        "user_name": user_name
+                        "user_name": current_user_name
                     }
+                    self._append_message(session_id, "assistant", text)
+                    return text, actions
                 else:
                     # Formater les réservations pour le LLM
                     reservations_info = []
@@ -1520,7 +1556,7 @@ class DialogManager:
                             reservations_text += f" ({res.get('activite')})"
                         reservations_text += f" - Statut: {res.get('statut')}\n"
                     
-                    reservations_text += f"\nL'utilisateur '{user_name}' m'a demandé ses réservations. Je dois lui présenter cette information de manière conviviale et claire."
+                    reservations_text += f"\nL'utilisateur '{current_user_name}' m'a demandé ses réservations. Je dois lui présenter cette information de manière conviviale et claire."
                     
                     # Ajouter le contexte au historique pour le LLM
                     self._append_message(session_id, "assistant", reservations_text)
@@ -1538,7 +1574,7 @@ class DialogManager:
                             
                             actions = {
                                 "type": "show_reservations",
-                                "user_name": user_name,
+                                "user_name": current_user_name,
                                 "reservations_count": len(reservations),
                                 "reservations": [json.loads(json.dumps(r, default=str)) for r in reservations_info]
                             }
@@ -1559,7 +1595,7 @@ class DialogManager:
                     
                     actions = {
                         "type": "show_reservations",
-                        "user_name": user_name,
+                        "user_name": current_user_name,
                         "reservations_count": len(reservations),
                         "reservations": [json.loads(json.dumps(r, default=str)) for r in reservations_info]
                     }
