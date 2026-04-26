@@ -15,6 +15,8 @@ class NLU:
         "demander_lieu": "navigate",
         "reserver": "book_activity",
         "qui": "who_are_you",
+        "ask_available_slots": "ask_available_slots",
+        "demander_mes_reservations": "ask_my_reservations",
         "inconnu": "unknown",
     }
 

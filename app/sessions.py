@@ -27,8 +27,20 @@ class SessionStore:
         self._meta[session_id] = time.time()
 
     def reset(self, session_id: str) -> bool:
+        """
+        Réinitialise la session complètement:
+        - Nettoie l'historique
+        - Nettoie l'utilisateur reconnu (user_name, user_role)
+        - Nettoie les slots de réservation
+        Mode veille activé!
+        """
         if session_id in self._store:
-            self._store[session_id] = {"created_at": time.time(), "last_intent": None, "fallbacks": 0}
+            self._store[session_id] = {
+                "created_at": time.time(), 
+                "last_intent": None, 
+                "fallbacks": 0
+                # user_name, user_role et tous les autres champs sont supprimés
+            }
             self._meta[session_id] = time.time()
             return True
         return False

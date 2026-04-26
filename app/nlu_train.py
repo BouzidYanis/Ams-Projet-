@@ -75,6 +75,28 @@ INTENT_PATTERNS = {
         r"\b(annule|annulez|annulez-moi)\b",
         r"\b(désister|abandon|déprogrammer)\b",
     ],
+    "ask_available_slots": [
+        r"\b(créneaux|créneau|horaires|disponible|disponibilité)\b",
+        r"\b(quand).*\b(disponible|libre)\b",
+        r"\b(qu'est-ce que).*\b(créneaux|créneau|horaires|slots)\b.*\b(disponible|libre)\b",
+        r"\b(quel.*horaire|quelle.*heure).*\b(disponible|libre)\b",
+        r"\b(quels.*horaires|heures.*disponible)\b",
+        r"\b(proposer|proposes|propose).*\b(créneaux|créneau|horaires|slots|heure)\b",
+        r"\b(avoir|montrer|afficher).*\b(créneaux|créneau|horaires|slots|heure|disponibilité)\b",
+        r"\b(créneaux|créneau|horaires).*\b(disponible|libre|possible)\b",
+    ],
+    "demander_mes_reservations": [
+        r"\b(mes.*réservation|réservation.*moi)\b",
+        r"\b(voir|afficher|montrer|liste).*\b(réservation|booking)\b",
+        r"\b(quels.*réservation|quel.*réservation|lesquel.*réservation)\b",
+        r"\b(j'ai.*réservé|j'ai.*booking)\b",
+        r"\b(check|vérifier|confirmer).*\b(réservation|mes.*cours|mes.*activités)\b",
+        r"\b(info.*réservation|information.*réservation|détails.*réservation)\b",
+        r"\b(quand.*ma.*réservation|quand.*mon.*cours)\b",
+        r"\b(résumé|récapitulatif).*\b(réservation|booking)\b",
+        r"\b(lister|afficher).*\b(mes|ma).*\b(réservation|booking|cours|activités)\b",
+        r"\b(j'ai.*réservé.*quoi|j'ai.*booking.*quoi)\b",
+    ],
 }
 
 # Compilez les patterns regex

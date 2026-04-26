@@ -15,6 +15,13 @@ import re
 from datetime import datetime, timedelta
 from .tools import parse_heure_to_minutes, parse_minutes_to_heure
 from app.DB_access import DatabaseMongo
+from app.reservation import (
+    get_available_slots, 
+    get_alternative_slots, 
+    get_available_slots_for_activity,
+    parse_time_to_minutes,
+    get_user_future_reservations,
+)
 
 db = DatabaseMongo()
 
@@ -536,12 +543,37 @@ class DialogManager:
             )
 
             if not salles_dispo:
-                text = "Désolé, aucune salle n'est disponible pour {} le {} à {}. Voulez-vous essayer un autre créneau ?".format(
-                    slots["activite"], slots["jour"], slots["heure"]
-                )
-                self._clear_booking_slots(session_id)
-                self._append_message(session_id, "assistant", text)
-                return text, {"type": "booking_no_availability"}
+                # Chercher les alternatives en terme de créneaux disponibles
+                available_slots_dict = get_available_slots_for_activity(slots["activite"], slots["jour"])
+                
+                if available_slots_dict:
+                    # Il y a des salles disponibles mais à d'autres horaires
+                    text_parts = ["Désolé, aucune salle n'est disponible pour {} le {} à {}.".format(
+                        slots["activite"], slots["jour"], slots["heure"]
+                    )]
+                    text_parts.append("Voici les créneaux disponibles pour cette activité ce jour :")
+                    for salle_nom, slots_list in list(available_slots_dict.items())[:3]:  # Montrer max 3 salles
+                        times = ", ".join([f"{s['heure_debut']}-{s['heure_fin']}" for s in slots_list[:3]])
+                        text_parts.append(f"  • {salle_nom}: {times}")
+                    text_parts.append("Voulez-vous choisir un de ces créneaux, ou essayer un autre jour ?")
+                    text = " ".join(text_parts)
+                    
+                    actions = {
+                        "type": "booking_alternatives",
+                        "available_slots": available_slots_dict,
+                        "current_slots": slots,
+                        "reason": "no_room_available_at_requested_time"
+                    }
+                    self._append_message(session_id, "assistant", text)
+                    return text, actions
+                else:
+                    # Aucune disponibilité du tout
+                    text = "Désolé, aucune salle n'est disponible pour {} le {}. Voulez-vous essayer à un autre moment ou une autre date ?".format(
+                        slots["activite"], slots["jour"]
+                    )
+                    self._clear_booking_slots(session_id)
+                    self._append_message(session_id, "assistant", text)
+                    return text, {"type": "booking_no_availability"}
 
             if len(salles_dispo) == 1:
                 salle_choisie = salles_dispo[0]
@@ -616,12 +648,8 @@ class DialogManager:
         activite_str = " pour l'activité {}".format(activite) if activite else ""
 
         if self._is_room_booked(salle_id, jour, heure, heure_fin):
-            text = "Désolé, la salle {} est déjà réservée le {} de {} à {}. Voulez-vous essayer un autre créneau ou une autre salle ?".format(
-                salle_nom, jour, heure, heure_fin
-            )
-            self._clear_booking_slots(session_id)
-            self._append_message(session_id, "assistant", text)
-            return text, {"type": "booking_no_availability"}
+            # La salle n'est pas disponible → proposer des alternatives intelligentes
+            return self._handle_booking_unavailable(session_id, salle_id, salle_nom, jour, heure, activite)
 
         text = "Parfait {} ! Je confirme votre réservation de la salle {}{} le {} de {} à {}. Souhaitez-vous autre chose ?".format(
             user_name, salle_nom, activite_str, jour, heure, heure_fin
@@ -662,7 +690,98 @@ class DialogManager:
         self._append_message(session_id, "assistant", text)
         return text, actions
 
-    
+    def _handle_booking_unavailable(self, session_id: str, salle_id: str, salle_nom: str, jour: str, heure: str, activite: str = "") -> Tuple[str, Dict[str, Any]]:
+        """
+        Gère le cas où une salle n'est pas disponible à l'horaire demandé.
+        Propose des alternatives intelligentes :
+        1. Créneaux alternatifs dans la même salle
+        2. Autres salles disponibles au même créneau
+        """
+        heure_fin = parse_heure_to_minutes(heure) + 60
+        heure_fin = parse_minutes_to_heure(heure_fin)
+        
+        # Récupérer les alternatives pour la même salle
+        alternatives_meme_salle = get_alternative_slots(salle_id, jour, heure, duree=60, max_alternatives=2)
+        
+        # Récupérer les autres salles disponibles
+        activite_cap = activite.capitalize() if activite else ""
+        db_client = DatabaseMongo()
+        salle_col = db_client.get_collection("salle")
+        other_salles = []
+        
+        if activite_cap:
+            other_salles = list(salle_col.find(
+                {
+                    "$and": [
+                        {"activites_supportees": {"$regex": activite_cap, "$options": "i"}},
+                        {"_id": {"$ne": salle_id}}
+                    ]
+                },
+                {"_id": 1, "nom": 1}
+            ))
+        else:
+            other_salles = list(salle_col.find(
+                {"_id": {"$ne": salle_id}},
+                {"_id": 1, "nom": 1}
+            ))
+        
+        # Vérifier la disponibilité des autres salles
+        salles_disponibles = []
+        for salle in other_salles[:3]:  # Limiter à 3 alternatives
+            if not self._is_room_booked(salle["_id"], jour, heure, heure_fin):
+                salles_disponibles.append(salle["nom"])
+        
+        db_client.close()
+        
+        # Construire le message avec les alternatives
+        parts = ["Désolé, la salle {} est déjà réservée le {} de {} à {}.".format(
+            salle_nom, jour, heure, heure_fin
+        )]
+        
+        actions = {
+            "type": "booking_no_availability",
+            "original_room": salle_nom,
+            "original_time": heure,
+            "date": jour,
+            "alternatives": {}
+        }
+        
+        # Proposer les créneaux alternatifs pour la même salle
+        if alternatives_meme_salle:
+            parts.append("Créneaux disponibles dans la même salle {} :".format(salle_nom))
+            for alt in alternatives_meme_salle:
+                parts.append("  • {} à {}".format(alt["heure_debut"], alt["heure_fin"]))
+            actions["alternatives"]["same_room"] = alternatives_meme_salle
+        
+        # Proposer les autres salles disponibles
+        if salles_disponibles:
+            parts.append("Autres salles disponibles à cet horaire : {}.".format(", ".join(salles_disponibles)))
+            actions["alternatives"]["other_rooms"] = salles_disponibles
+        
+        # Message final de question
+        options = []
+        if alternatives_meme_salle:
+            options.append("un autre créneau dans la même salle")
+        if salles_disponibles:
+            options.append("une autre salle")
+        
+        if options:
+            parts.append("Voulez-vous {} ?".format(" ou ".join(options)))
+        else:
+            parts.append("Malheureusement, il n'y a pas d'alternatives disponibles pour ce jour.")
+        
+        text = " ".join(parts)
+        
+        # Sauvegarder les alternatives dans la session pour la suite du dialogue
+        slots = self._get_booking_slots(session_id)
+        slots["_alternatives"] = {
+            "same_room": alternatives_meme_salle,
+            "other_rooms": salles_disponibles
+        }
+        self._set_booking_slots(session_id, slots)
+        
+        self._append_message(session_id, "assistant", text)
+        return text, actions
 
     def handle(self, session_id: str, parse_result: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
         """
@@ -1215,6 +1334,201 @@ class DialogManager:
                     text = "Désolé, je n'ai pas trouvé d'informations sur l'activité {}.".format(activity)
                     self._append_message(session_id, "assistant", text)
                     return text, actions
+
+        elif intent == "ask_available_slots":
+            # L'utilisateur demande les créneaux disponibles
+            entities_list = entities.get("activity", [])
+            activity = entities_list[0] if entities_list else None
+            
+            locations_list = entities.get("location", [])
+            location = locations_list[0] if locations_list else None
+            
+            times_list = entities.get("time", [])
+            date_requested = times_list[0] if times_list else None
+            
+            # Si on a une activité, montrer les créneaux pour cette activité
+            if activity:
+                activity = activity.capitalize()
+                # Par défaut, on cherche pour aujourd'hui/demain
+                if not date_requested:
+                    from datetime import datetime, timedelta
+                    date_requested = datetime.now().strftime("%Y-%m-%d")
+                
+                # Obtenir les créneaux disponibles
+                try:
+                    slots_dict = get_available_slots_for_activity(activity, date_requested)
+                    
+                    if slots_dict:
+                        text_parts = ["Voici les créneaux disponibles pour {} le {} :".format(activity, date_requested)]
+                        for salle_nom, slots_list in slots_dict.items():
+                            times = ", ".join([f"{s['heure_debut']}-{s['heure_fin']}" for s in slots_list])
+                            text_parts.append(f"  • {salle_nom}: {times}")
+                        text = "\n".join(text_parts)
+                        
+                        actions = {
+                            "type": "show_available_slots",
+                            "activity": activity,
+                            "date": date_requested,
+                            "slots": slots_dict
+                        }
+                    else:
+                        text = "Désolé, il n'y a pas de créneaux disponibles pour {} le {}. Voulez-vous essayer un autre jour ?".format(
+                            activity, date_requested
+                        )
+                        actions = {"type": "no_slots_available"}
+                except Exception as e:
+                    print("[DialogManager] Erreur lors de la récupération des créneaux:", e)
+                    text = "Désolé, je n'ai pas pu récupérer les créneaux disponibles. Pouvez-vous préciser l'activité et la date ?"
+                    actions = {"type": "error"}
+                
+                self._append_message(session_id, "assistant", text)
+                return text, actions
+            
+            elif location:
+                # Si on a une location (salle), montrer les créneaux pour cette salle
+                location_normalized = location.replace("_", " ").title()
+                db_client = DatabaseMongo()
+                salle_doc = db_client.get_collection("salle").find_one(
+                    {"nom": {"$regex": location_normalized, "$options": "i"}},
+                    {"_id": 1, "nom": 1, "horaire_ouverture": 1, "horaire_fermeture": 1}
+                )
+                db_client.close()
+                
+                if salle_doc:
+                    if not date_requested:
+                        from datetime import datetime
+                        date_requested = datetime.now().strftime("%Y-%m-%d")
+                    
+                    try:
+                        opening = salle_doc.get("horaire_ouverture", "08:00")
+                        closing = salle_doc.get("horaire_fermeture", "22:00")
+                        slots_available = get_available_slots(
+                            salle_doc["_id"], date_requested, opening, closing
+                        )
+                        
+                        if slots_available:
+                            times = ", ".join([f"{s['heure_debut']}-{s['heure_fin']}" for s in slots_available])
+                            text = "Les créneaux disponibles dans {} le {} sont : {}".format(
+                                salle_doc["nom"], date_requested, times
+                            )
+                            actions = {
+                                "type": "show_available_slots_for_room",
+                                "salle_nom": salle_doc["nom"],
+                                "date": date_requested,
+                                "slots": slots_available
+                            }
+                        else:
+                            text = "Désolé, la salle {} n'a pas de créneaux disponibles le {}. Voulez-vous essayer un autre jour ?".format(
+                                salle_doc["nom"], date_requested
+                            )
+                            actions = {"type": "no_slots_available"}
+                    except Exception as e:
+                        print("[DialogManager] Erreur lors de la récupération des créneaux:", e)
+                        text = "Désolé, je n'ai pas pu récupérer les créneaux disponibles."
+                        actions = {"type": "error"}
+                else:
+                    text = "Désolé, je n'ai pas trouvé la salle '{}' dans notre système.".format(location)
+                    actions = {"type": "error", "reason": "room_not_found"}
+                
+                self._append_message(session_id, "assistant", text)
+                return text, actions
+            
+            else:
+                # Pas d'activité ni de salle spécifiée, demander plus de précisions
+                text = "Voulez-vous connaître les créneaux disponibles pour une activité spécifique ou pour une salle en particulier ? Dites-moi quelle activité ou quelle salle vous intéresse."
+                self._append_message(session_id, "assistant", text)
+                return text, {"type": "ask_available_slots_clarification"}
+
+        elif intent == "ask_my_reservations":
+            # L'utilisateur demande ses réservations
+            if not user_name:
+                text = "Désolé, je ne vous ai pas reconnu. Vous devez d'abord vous authentifier pour consulter vos réservations."
+                self._append_message(session_id, "assistant", text)
+                return text, {"type": "error", "reason": "user_not_authenticated"}
+            
+            try:
+                # Récupérer les réservations futures de l'utilisateur
+                reservations = get_user_future_reservations(user_name, include_past=False)
+                
+                if not reservations:
+                    # Pas de réservations futures
+                    text = "Vous n'avez pas de réservations à venir. Voulez-vous en faire une ?"
+                    actions = {
+                        "type": "no_future_reservations",
+                        "user_name": user_name
+                    }
+                else:
+                    # Formater les réservations pour le LLM
+                    reservations_info = []
+                    for res in reservations:
+                        res_info = {
+                            "salle": res.get("salle"),
+                            "date": res.get("jour"),
+                            "heure": f"{res.get('heure_debut')}-{res.get('heure_fin')}",
+                            "activite": res.get("activite"),
+                            "statut": res.get("statut")
+                        }
+                        reservations_info.append(res_info)
+                    
+                    # Préparer un contexte pour le LLM
+                    reservations_text = "Voici les réservations de l'utilisateur:\n"
+                    for i, res in enumerate(reservations, 1):
+                        reservations_text += f"{i}. {res.get('salle')} le {res.get('jour')} de {res.get('heure_debut')} à {res.get('heure_fin')}"
+                        if res.get("activite") and res.get("activite") != "Non spécifiée":
+                            reservations_text += f" ({res.get('activite')})"
+                        reservations_text += f" - Statut: {res.get('statut')}\n"
+                    
+                    reservations_text += f"\nL'utilisateur '{user_name}' m'a demandé ses réservations. Je dois lui présenter cette information de manière conviviale et claire."
+                    
+                    # Ajouter le contexte au historique pour le LLM
+                    self._append_message(session_id, "assistant", reservations_text)
+                    
+                    try:
+                        # Laisser le LLM générer une réponse naturelle
+                        print("[DialogManager] ask_my_reservations: Calling LLM to format reservations")
+                        assistant_text = self.llm.generate_chat(self.system_prompt, history)
+                        
+                        if assistant_text and assistant_text.strip():
+                            # Remplacer le message context par la réponse du LLM
+                            session = self.sessions.get(session_id)
+                            session["history"][-1] = {"role": "assistant", "content": assistant_text}
+                            self.sessions.update(session_id, session)
+                            
+                            actions = {
+                                "type": "show_reservations",
+                                "user_name": user_name,
+                                "reservations_count": len(reservations),
+                                "reservations": [json.loads(json.dumps(r, default=str)) for r in reservations_info]
+                            }
+                            return assistant_text, actions
+                    except LLMError as e:
+                        print(f"[DialogManager] LLM error for ask_my_reservations: {e}")
+                    
+                    # Fallback si LLM échoue : générer une réponse simple
+                    if len(reservations) == 1:
+                        res = reservations[0]
+                        text = "Vous avez une réservation : {} le {} de {} à {}.".format(
+                            res.get("salle"), res.get("jour"), res.get("heure_debut"), res.get("heure_fin")
+                        )
+                    else:
+                        text = f"Vous avez {len(reservations)} réservations à venir :\n"
+                        for i, res in enumerate(reservations, 1):
+                            text += f"{i}. {res.get('salle')} le {res.get('jour')} de {res.get('heure_debut')} à {res.get('heure_fin')}\n"
+                    
+                    actions = {
+                        "type": "show_reservations",
+                        "user_name": user_name,
+                        "reservations_count": len(reservations),
+                        "reservations": [json.loads(json.dumps(r, default=str)) for r in reservations_info]
+                    }
+                    self._append_message(session_id, "assistant", text)
+                    return text, actions
+            
+            except Exception as e:
+                print(f"[DialogManager] Erreur lors de la récupération des réservations: {e}")
+                text = "Désolé, je n'ai pas pu récupérer vos réservations. Veuillez réessayer plus tard."
+                self._append_message(session_id, "assistant", text)
+                return text, {"type": "error", "reason": "reservation_retrieval_failed"}
 
         # --- Unknown Intent ---
         # Quand l'intention n'est pas reconnue, laisser le LLM générer une réponse

@@ -214,13 +214,30 @@ async def respond(req: RespondRequest):
     parse_result = nlu.parse(req.text)
     print(f"[RESPOND] NLU Résultat: intent={parse_result['intent']}, confidence={parse_result['confidence']}")
 
-    # Injecter le nom et le rôle dans le parse_result si fournis
+    # Charger la session existante
+    session_data = sessions.get(session_id)
+    
+    # --- GESTION DU USER_NAME ET ROLE ---
+    # Priorité: 1) Reconnaissance faciale (req.user_name) 2) Session sauvegardée
     if req.user_name:
+        # Nouvelle reconnaissance faciale
         parse_result["user_name"] = req.user_name
+        session_data["user_name"] = req.user_name  # SAUVEGARDER !
+        print(f"[RESPOND] ✓ Reconnaissance faciale: {req.user_name}")
+    elif session_data.get("user_name"):
+        # Utiliser l'utilisateur déjà reconnu dans la session
+        parse_result["user_name"] = session_data["user_name"]
+        print(f"[RESPOND] ✓ Utilisateur reconnu (sauvegardé): {session_data['user_name']}")
+    
     if req.user_role:
         parse_result["user_role"] = req.user_role
-
-    session_data = sessions.get(session_id)
+        session_data["user_role"] = req.user_role
+    elif session_data.get("user_role"):
+        parse_result["user_role"] = session_data["user_role"]
+    
+    # Sauvegarder la session avec le user_name persistant
+    sessions.update(session_id, session_data)
+    
     booking_in_progress = "booking_slots" in session_data
     # if parse_result["intent"] == "unknown" and not booking_in_progress:
     #     response_text = "Désolé, je n'ai pas compris votre demande. Pouvez-vous reformuler ?"
@@ -261,10 +278,33 @@ async def respond(req: RespondRequest):
 
 @app.get("/v1/session/{session_id}/reset")
 def reset_session(session_id: str):
+    """Réinitialise une session pour mode veille: nettoie user_name, slots, historique"""
     ok = sessions.reset(session_id)
     if not ok:
         raise HTTPException(status_code=404, detail="session not found")
-    return {"status": "ok", "session_id": session_id}
+    return {"status": "ok", "session_id": session_id, "message": "Mode veille activé - utilisateur oublié"}
+
+
+@app.post("/v1/sleep_mode")
+def sleep_mode(session_id: str = None):
+    """
+    Entre en mode veille: réinitialise complètement la session (user_name, rôle, réservation, etc.)
+    Usage: POST /v1/sleep_mode?session_id=xyz
+    """
+    if not session_id:
+        return {"status": "error", "message": "session_id requis en paramètre"}
+    
+    ok = sessions.reset(session_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="session not found")
+    
+    return {
+        "status": "ok", 
+        "session_id": session_id,
+        "message": "Mode veille activé",
+        "user_cleared": True,
+        "ready_for_next_user": True
+    }
 
 
 @app.get("/v1/session/{session_id}/slots")
