@@ -194,13 +194,17 @@ def verify(image: UploadFile = File(...)):
 
 @app.post("/v1/parse", response_model=ParseResponse)
 def parse(req: ParseRequest):
-    # result = nlu.parse(req.text, req.lang)
-    result = nlu.parse(req.text)
+    result = nlu.parse(req.text, req.lang)
     return ParseResponse(intent=result["intent"], confidence=result["confidence"], entities=result["entities"])
 @app.post("/v1/parse_all_inents", response_model=Dict[str, Any])
 def parse_all_intents(req: ParseRequest):
-    result = nlu.parse_intents_confidences(req.text)
-    return result
+    # Return per-intent confidences; use the language hint if provided
+    parsed = nlu.parse(req.text, req.lang)
+    intent = parsed["intent"]
+    conf = parsed["confidence"]
+    all_intents = {v: 0.0 for v in nlu._INTENT_MAP.values()}
+    all_intents[intent] = conf
+    return all_intents
 
 @app.post("/v1/respond", response_model=RespondResponse)
 async def respond(req: RespondRequest):
@@ -212,6 +216,9 @@ async def respond(req: RespondRequest):
     print(f"[RESPOND] Texte: {req.text}")
     
     parse_result = nlu.parse(req.text)
+    # Respecter la langue détectée/transmise par le frontend/ASR
+    # (si `req.lang` est None, NLU utilisera sa valeur par défaut)
+    parse_result = nlu.parse(req.text, req.lang)
     print(f"[RESPOND] NLU Résultat: intent={parse_result['intent']}, confidence={parse_result['confidence']}")
 
     # Charger la session existante

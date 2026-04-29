@@ -1,0 +1,19 @@
+{
+  "labels":[
+    "greeting",
+    "ask_hours",
+    "ask_activity",
+    "ask_pricing",
+    "ask_location",
+    "reserve",
+    "who_are_you",
+    "cancel_booking",
+    "ask_available_slots",
+    "ask_my_bookings",
+    "ask_registered_activity_schedule",
+    "ask_special_events",
+    "unknown"
+  ],
+  "threshold":0.0,
+  "positive_label":null
+}
