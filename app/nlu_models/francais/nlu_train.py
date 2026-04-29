@@ -15,7 +15,7 @@ from pathlib import Path
 import spacy
 from spacy.tokens import Doc
 
-from app.test_model.francais.continuous_learning import apply_entity_blocklist, apply_entity_hints
+from app.nlu_models.francais.continuous_learning import apply_entity_blocklist, apply_entity_hints
 
 # ─────────────────────────────────────────────────────────────────
 # Chemins des modèles

@@ -5,7 +5,7 @@ Usage:
     python review_feedback.py
 """
 
-from app.test_model.francais.continuous_learning import (
+from app.nlu_models.francais.continuous_learning import (
     format_intents,
     pending_examples,
     validate_pending_item,

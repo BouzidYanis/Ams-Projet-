@@ -2,7 +2,7 @@
 Review pending intent feedback for English pipeline.
 """
 
-from app.test_model.english.continuous_learning import format_intents, pending_examples, validate_pending_item
+from app.nlu_models.english.continuous_learning import format_intents, pending_examples, validate_pending_item
 
 
 def main() -> None:

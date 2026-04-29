@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from app.test_model.english.training_data import INTENTS
+from app.nlu_models.english.training_data import INTENTS
 
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"

@@ -60,7 +60,7 @@ class NLU:
         s = s.replace("-", "_").replace(" ", "_")
         return s
 
-    def _find_spacy_model_path(self, lang: str) -> str | None:
+    def _find_spacy_model_path(self, lang: str) -> dict[str, str | None]:
         """Retourne les chemins vers `nlu_model` et `ner_model` lorsqu'ils existent.
 
         Renvoie un dict: {"nlu": path_or_None, "ner": path_or_None}
@@ -168,6 +168,8 @@ class NLU:
                 ent_temps = []
                 ent_nombres = []
 
+                doc_nlu = None
+
                 # Si on a un modèle NLU dédié, l'utiliser pour l'intent
                 if nlu_nlp:
                     doc_nlu = nlu_nlp(text_in)
@@ -198,7 +200,7 @@ class NLU:
                     ent_nombres = [token.text for token in doc_ner if token.like_num]
                 else:
                     # fallback nombres si pas de ner model
-                    if nlu_nlp:
+                    if doc_nlu is not None:
                         ent_nombres = [token.text for token in doc_nlu if token.like_num]
 
                 # Si aucun intent détecté via modèle NLU -> fallback rule-based

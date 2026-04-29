@@ -8,7 +8,7 @@ from pathlib import Path
 import spacy
 from spacy.matcher import Matcher
 
-from app.test_model.english.continuous_learning import apply_entity_blocklist, apply_entity_hints
+from app.nlu_models.english.continuous_learning import apply_entity_blocklist, apply_entity_hints
 
 BASE_DIR = Path(__file__).parent
 NLU_MODEL = BASE_DIR / "models" / "nlu_model_en"
@@ -63,7 +63,7 @@ def _classify_regex(text: str) -> tuple[str, float]:
         intent: sum(1 for p in patterns if p.search(text))
         for intent, patterns in _compiled_fallback.items()
     }
-    best = max(scores, key=scores.get)
+    best = max(scores.items(), key=lambda item: item[1])[0]
     if scores[best] > 0:
         return best, round(scores[best] / len(_compiled_fallback[best]), 2)
     return "unknown", 0.0
@@ -132,6 +132,9 @@ def _extract_entities_matcher(doc) -> dict:
 
 
 def _extract_entities_ner(text: str) -> dict:
+    if _nlp_ner is None:
+        return {"sports": [], "locations": [], "times": [], "numbers": []}
+
     doc = _nlp_ner(text)
     result: dict[str, list] = {"sports": [], "locations": [], "times": [], "numbers": []}
     label_map = {
@@ -156,7 +159,7 @@ def traiter_requete(text: str) -> dict:
 
     if _use_intent_model:
         doc = _nlp_intent(text)
-        intent = max(doc.cats, key=doc.cats.get)
+        intent = max(doc.cats.items(), key=lambda item: item[1])[0]
         conf = round(doc.cats[intent], 2)
     else:
         intent, conf = _classify_regex(text.lower())

@@ -17,8 +17,8 @@ from pathlib import Path
 import spacy
 from spacy.training import Example
 
-from app.test_model.francais.continuous_learning import validated_to_training_data
-from app.test_model.francais.training_data import INTENTS, TRAINING_DATA
+from app.nlu_models.francais.continuous_learning import validated_to_training_data
+from app.nlu_models.francais.training_data import INTENTS, TRAINING_DATA
 
 warnings.filterwarnings("ignore")
 

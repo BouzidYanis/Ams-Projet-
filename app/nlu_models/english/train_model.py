@@ -9,8 +9,8 @@ from pathlib import Path
 import spacy
 from spacy.training import Example
 
-from app.test_model.english.continuous_learning import validated_to_training_data
-from app.test_model.english.training_data import INTENTS, TRAINING_DATA
+from app.nlu_models.english.continuous_learning import validated_to_training_data
+from app.nlu_models.english.training_data import INTENTS, TRAINING_DATA
 
 
 def split_data(data: list, ratio: float = 0.85):

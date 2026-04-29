@@ -21,8 +21,8 @@ import spacy
 from spacy.training import Example
 from spacy.util import minibatch, compounding
 
-from app.test_model.francais.continuous_learning import validated_to_ner_training_data
-from app.test_model.francais.training_data_ner import ENTITY_LABELS, NER_TRAINING_DATA
+from app.nlu_models.francais.continuous_learning import validated_to_ner_training_data
+from app.nlu_models.francais.training_data_ner import ENTITY_LABELS, NER_TRAINING_DATA
 
 warnings.filterwarnings("ignore")
 

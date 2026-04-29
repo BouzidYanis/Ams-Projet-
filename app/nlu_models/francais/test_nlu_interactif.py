@@ -5,7 +5,7 @@ Tape une phrase, le script affiche l'intent et les entites detectees.
 
 import spacy
 
-from app.test_model.francais.continuous_learning import (
+from app.nlu_models.francais.continuous_learning import (
     add_blocked_entity,
     entity_blocklist_count,
     entity_hints_count,
@@ -16,7 +16,7 @@ from app.test_model.francais.continuous_learning import (
     validated_count,
     record_entity_correction,
 )
-from app.test_model.francais.nlu_train import traiter_requete
+from app.nlu_models.francais.nlu_train import traiter_requete
 
 
 try:

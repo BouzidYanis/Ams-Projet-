@@ -4,7 +4,7 @@ Interactive test for English NLU pipeline.
 
 import spacy
 
-from app.test_model.english.continuous_learning import (
+from app.nlu_models.english.continuous_learning import (
     add_blocked_entity,
     add_entity_hint,
     entity_blocklist_count,
@@ -15,7 +15,7 @@ from app.test_model.english.continuous_learning import (
     pending_count,
     validated_count,
 )
-from app.test_model.english.nlu_train import traiter_requete
+from app.nlu_models.english.nlu_train import traiter_requete
 
 
 try:

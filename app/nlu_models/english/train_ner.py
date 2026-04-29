@@ -10,8 +10,8 @@ import spacy
 from spacy.training import Example
 from spacy.util import compounding, minibatch
 
-from app.test_model.english.continuous_learning import validated_to_ner_training_data
-from app.test_model.english.training_data_ner import ENTITY_LABELS, NER_TRAINING_DATA
+from app.nlu_models.english.continuous_learning import validated_to_ner_training_data
+from app.nlu_models.english.training_data_ner import ENTITY_LABELS, NER_TRAINING_DATA
 
 
 def split_data(data: list, ratio: float = 0.85):

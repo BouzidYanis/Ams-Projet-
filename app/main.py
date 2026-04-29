@@ -194,17 +194,11 @@ def verify(image: UploadFile = File(...)):
 
 @app.post("/v1/parse", response_model=ParseResponse)
 def parse(req: ParseRequest):
-    result = nlu.parse(req.text, req.lang)
+    result = nlu.parse(req.text, req.lang or "fr")
     return ParseResponse(intent=result["intent"], confidence=result["confidence"], entities=result["entities"])
 @app.post("/v1/parse_all_inents", response_model=Dict[str, Any])
 def parse_all_intents(req: ParseRequest):
-    # Return per-intent confidences; use the language hint if provided
-    parsed = nlu.parse(req.text, req.lang)
-    intent = parsed["intent"]
-    conf = parsed["confidence"]
-    all_intents = {v: 0.0 for v in nlu._INTENT_MAP.values()}
-    all_intents[intent] = conf
-    return all_intents
+    return nlu.parse_intents_confidences(req.text, req.lang or "fr")
 
 @app.post("/v1/respond", response_model=RespondResponse)
 async def respond(req: RespondRequest):
@@ -215,10 +209,7 @@ async def respond(req: RespondRequest):
     print(f"[RESPOND] Session ID utilisée: {session_id}")
     print(f"[RESPOND] Texte: {req.text}")
     
-    parse_result = nlu.parse(req.text)
-    # Respecter la langue détectée/transmise par le frontend/ASR
-    # (si `req.lang` est None, NLU utilisera sa valeur par défaut)
-    parse_result = nlu.parse(req.text, req.lang)
+    parse_result = nlu.parse(req.text, req.lang or "fr")
     print(f"[RESPOND] NLU Résultat: intent={parse_result['intent']}, confidence={parse_result['confidence']}")
 
     # Charger la session existante
@@ -293,7 +284,7 @@ def reset_session(session_id: str):
 
 
 @app.post("/v1/sleep_mode")
-def sleep_mode(session_id: str = None):
+def sleep_mode(session_id: Optional[str] = None):
     """
     Entre en mode veille: réinitialise complètement la session (user_name, rôle, réservation, etc.)
     Usage: POST /v1/sleep_mode?session_id=xyz
@@ -335,7 +326,7 @@ def get_session_slots(session_id: str):
 @app.post("/v1/reserver_salle")
 def reserver_salle_endpoint(req: ReservationRequest):
     try:
-        reservation_id = reserver_salle(req.model_dump())
+        reservation_id = reserver_salle(req.dict())
         return {"status": "success", "reservation_id": str(reservation_id)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
