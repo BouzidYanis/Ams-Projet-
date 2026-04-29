@@ -63,14 +63,11 @@ if _USE_INTENT_MODEL:
 else:
     print("[NLU] ⚠ Modèle intent absent → fallback regex")
 
-try:
-    _nlp_ner = spacy.load(NER_MODEL)
-    _USE_NER_MODEL = True
+_nlp_ner, _USE_NER_MODEL = _load_spacy_model(NER_MODEL, "fr_core_news_md")
+if _USE_NER_MODEL:
     print("[NLU] ✓ Modèle NER chargé")
-except Exception as exc:
-    _nlp_ner = None
-    _USE_NER_MODEL = False
-    print(f"[NLU] ⚠ Modèle NER absent → fallback Matcher ({exc})")
+else:
+    print("[NLU] ⚠ Modèle NER absent → fallback Matcher")
 
 # ─────────────────────────────────────────────────────────────────
 # Fallback regex (intent) — utilisé si NLU_MODEL absent

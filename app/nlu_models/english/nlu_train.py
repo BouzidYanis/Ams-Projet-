@@ -18,11 +18,12 @@ NER_MODEL = BASE_DIR / "models" / "ner_model_en"
 def _load_model(path: Path, fallback_names: tuple[str, ...], lang: str):
     try:
         return spacy.load(path), True
-    except OSError:
+    except Exception:
+        # Try fallback models, first with lemmatizer excluded
         for name in fallback_names:
             try:
-                return spacy.load(name), False
-            except OSError:
+                return spacy.load(name, exclude=["lemmatizer"]), False
+            except Exception:
                 continue
     return spacy.blank(lang), False
 
@@ -31,12 +32,9 @@ _nlp_intent, _use_intent_model = _load_model(
     NLU_MODEL, ("en_core_web_md", "en_core_web_sm"), "en"
 )
 
-try:
-    _nlp_ner = spacy.load(NER_MODEL)
-    _use_ner_model = True
-except OSError:
-    _nlp_ner = None
-    _use_ner_model = False
+_nlp_ner, _use_ner_model = _load_model(
+    NER_MODEL, ("en_core_web_md", "en_core_web_sm"), "en"
+)
 
 _intent_patterns: dict[str, list[str]] = {
     "greeting": [r"\b(hello|hi|hey|good morning|good evening)\b"],
