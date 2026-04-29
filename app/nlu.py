@@ -71,6 +71,10 @@ class NLU:
         s = re.sub(r'[^\w\s]$', '', s).strip()
         s = " ".join(s.split())
 
+        # Harmoniser les variantes anglaises et françaises vers les clés DB.
+        s = s.replace("room ", "salle ")
+        s = s.replace("room_", "salle_")
+
         direct = {
             "salle a": "salle_a",
             "salle b": "salle_b",
@@ -78,14 +82,68 @@ class NLU:
             "salle d": "salle_d",
             "salle e": "salle_e",
             "salle f": "salle_f",
+            "room a": "salle_a",
+            "room b": "salle_b",
+            "room c": "salle_c",
+            "room d": "salle_d",
+            "room e": "salle_e",
+            "room f": "salle_f",
             "salle natation": "natation",
+            "room natation": "natation",
             "salle de natation": "natation",
+            "pool": "natation",
+            "swimming pool": "natation",
         }
         if s in direct:
             return direct[s]
 
+        match = re.fullmatch(r"(?:salle|room)[ _-]*([a-f])", s)
+        if match:
+            return f"salle_{match.group(1)}"
+
         s = s.replace("-", "_").replace(" ", "_")
         return s
+
+    def _normalize_activity_name(self, raw: str) -> str:
+        """Normalise une activité vers le libellé attendu par la base Mongo."""
+        if raw is None:
+            return ""
+
+        s = str(raw).strip().strip("'\"")
+        if not s:
+            return ""
+
+        key = re.sub(r"[\s_-]+", " ", s.lower())
+        aliases = {
+            "yoga": "Yoga",
+            "pilates": "Pilates",
+            "zumba": "Zumba",
+            "fitness": "Fitness",
+            "musculation": "Fitness",
+            "cardio": "Fitness",
+            "gym": "Fitness",
+            "natation": "Natation",
+            "swimming": "Natation",
+            "pool": "Natation",
+            "basket": "Basket",
+            "basketball": "Basket",
+            "football": "Football",
+            "soccer": "Football",
+            "futsal": "Futsal",
+            "tennis": "Tennis",
+            "ping pong": "Ping-Pong",
+            "pingpong": "Ping-Pong",
+            "table tennis": "Ping-Pong",
+            "tennis de table": "Ping-Pong",
+            "badminton": "Badminton",
+            "volley": "Volley",
+            "volleyball": "Volley",
+            "handball": "Handball",
+        }
+        if key in aliases:
+            return aliases[key]
+
+        return s[:1].upper() + s[1:] if len(s) > 1 else s.upper()
 
     def _load_parser_for_lang(self, lang: str):
         if lang in self._parsers:
@@ -112,7 +170,9 @@ class NLU:
         for sport_key in ("sports", "sport", "activity", "activities"):
             for sport in raw_entities.get(sport_key, []) or []:
                 if sport:
-                    entities.setdefault("activity", []).append(sport)
+                    normalized_activity = self._normalize_activity_name(sport)
+                    if normalized_activity:
+                        entities.setdefault("activity", []).append(normalized_activity)
 
         for location_key in ("lieux", "lieu", "locations", "location"):
             for lieu in raw_entities.get(location_key, []) or []:

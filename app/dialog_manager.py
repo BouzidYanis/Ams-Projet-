@@ -55,6 +55,48 @@ RULES = {
 llm_openai = "llm_openai_config.json"
 
 
+def _normalize_activity_name(value: str) -> str:
+    """Normalise une activité vers le libellé stocké en base."""
+    if not value:
+        return ""
+
+    s = str(value).strip().strip("'\"")
+    if not s:
+        return ""
+
+    key = re.sub(r"[\s_-]+", " ", s.lower())
+    aliases = {
+        "yoga": "Yoga",
+        "pilates": "Pilates",
+        "zumba": "Zumba",
+        "fitness": "Fitness",
+        "musculation": "Fitness",
+        "cardio": "Fitness",
+        "gym": "Fitness",
+        "natation": "Natation",
+        "swimming": "Natation",
+        "pool": "Natation",
+        "basket": "Basket",
+        "basketball": "Basket",
+        "football": "Football",
+        "soccer": "Football",
+        "futsal": "Futsal",
+        "tennis": "Tennis",
+        "ping pong": "Ping-Pong",
+        "pingpong": "Ping-Pong",
+        "table tennis": "Ping-Pong",
+        "tennis de table": "Ping-Pong",
+        "badminton": "Badminton",
+        "volley": "Volley",
+        "volleyball": "Volley",
+        "handball": "Handball",
+    }
+    if key in aliases:
+        return aliases[key]
+
+    return s[:1].upper() + s[1:] if len(s) > 1 else s.upper()
+
+
 def convert_to_date(date_str: str) -> str:
     """
     Convertit une chaîne de texte en date au format YYYY-MM-DD.
@@ -303,6 +345,7 @@ class DialogManager:
         try:
             if activite_name:
                 # Chercher une activité spécifique
+                activite_name = _normalize_activity_name(activite_name)
                 activite = db.get_collection("activite").find_one(
                     {"nom": {"$regex": f"^{activite_name}$", "$options": "i"}},
                     {"nom": 1, "tarif": 1, "description": 1}
@@ -494,7 +537,7 @@ class DialogManager:
         Retourne une liste de salles disponibles depuis MongoDB.
         """
         # Chercher les salles associées à cette activité
-        activite_cap = activite.capitalize()
+        activite_cap = _normalize_activity_name(activite)
         salles = list(db.get_collection("salle").find(
             {"activites_supportees": {"$regex": activite_cap, "$options": "i"}},
             {"_id": 0}
@@ -726,7 +769,7 @@ class DialogManager:
         alternatives_meme_salle = get_alternative_slots(salle_id, jour, heure, duree=60, max_alternatives=2)
         
         # Récupérer les autres salles disponibles
-        activite_cap = activite.capitalize() if activite else ""
+        activite_cap = _normalize_activity_name(activite) if activite else ""
         db_client = DatabaseMongo()
         salle_col = db_client.get_collection("salle")
         other_salles = []
@@ -1337,7 +1380,7 @@ class DialogManager:
                 actions = {"type": "ask_activity"}
                 return text, actions
             else:
-                activity = activity.capitalize()
+                activity = _normalize_activity_name(activity)
                 print("[DialogManager] User asked about activity:", activity)
                 info = db.get_collection("activite").find_one({"nom": activity}, {"_id": 0})
                 print(info)
@@ -1394,7 +1437,7 @@ class DialogManager:
             
             # Si on a une activité, montrer les créneaux pour cette activité
             if activity:
-                activity = activity.capitalize()
+                activity = _normalize_activity_name(activity)
                 # Par défaut, on cherche pour aujourd'hui/demain
                 if not date_requested:
                     from datetime import datetime, timedelta
