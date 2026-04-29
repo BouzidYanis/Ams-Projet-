@@ -43,7 +43,7 @@ def _load_spacy_model(path: Path, fallback_name: str | None = None):
     français minimal qui suffit pour le matcher et le vocabulaire.
     """
     try:
-        return spacy.load(path), True
+        return spacy.load(path, exclude=["lemmatizer"]), True
     except Exception as exc:
         print(f"[NLU] ⚠ Chargement impossible de {path}: {exc}")
 
@@ -96,7 +96,7 @@ def _classify_regex(text: str) -> tuple[str, float]:
         intent: sum(1 for p in patterns if p.search(text))
         for intent, patterns in _compiled_fallback.items()
     }
-    best = max(scores, key=scores.get)
+    best = max(scores, key=lambda intent: scores[intent])
     if scores[best] > 0:
         return best, round(scores[best] / len(_compiled_fallback[best]), 2)
     return "inconnu", 0.0
@@ -256,7 +256,7 @@ def traiter_requete(texte: str) -> dict:
     # ── Intent ───────────────────────────────────────────────────
     if _USE_INTENT_MODEL:
         doc    = _nlp_intent(text)
-        intent = max(doc.cats, key=doc.cats.get)
+        intent = max(doc.cats, key=lambda label: doc.cats[label])
         conf   = round(doc.cats[intent], 2)
     else:
         intent, conf = _classify_regex(text.lower())
