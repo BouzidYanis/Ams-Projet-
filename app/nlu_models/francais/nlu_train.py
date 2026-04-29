@@ -35,23 +35,42 @@ if not Doc.has_extension("confidence"):
 # ─────────────────────────────────────────────────────────────────
 # Chargement des modèles
 # ─────────────────────────────────────────────────────────────────
-try:
-    _nlp_intent = spacy.load(NLU_MODEL)
-    _USE_INTENT_MODEL = True
+def _load_spacy_model(path: Path, fallback_name: str | None = None):
+    """Charge un modèle spaCy en évitant les crashs de lemmatizer/config.
+
+    Si le modèle sérialisé est cassé ou si `fr_core_news_md` ne peut pas être
+    initialisé (tables de lemmatisation manquantes), on retombe sur un pipeline
+    français minimal qui suffit pour le matcher et le vocabulaire.
+    """
+    try:
+        return spacy.load(path), True
+    except Exception as exc:
+        print(f"[NLU] ⚠ Chargement impossible de {path}: {exc}")
+
+    if fallback_name:
+        try:
+            # Le parser a seulement besoin d'un vocab; le reste du pipeline est optionnel.
+            return spacy.load(fallback_name, exclude=["lemmatizer"]), False
+        except Exception as exc:
+            print(f"[NLU] ⚠ Fallback {fallback_name} impossible: {exc}")
+
+    return spacy.blank("fr"), False
+
+
+_nlp_intent, _USE_INTENT_MODEL = _load_spacy_model(NLU_MODEL, "fr_core_news_md")
+if _USE_INTENT_MODEL:
     print("[NLU] ✓ Modèle intent chargé")
-except OSError:
-    _nlp_intent = spacy.load("fr_core_news_md")
-    _USE_INTENT_MODEL = False
+else:
     print("[NLU] ⚠ Modèle intent absent → fallback regex")
 
 try:
     _nlp_ner = spacy.load(NER_MODEL)
     _USE_NER_MODEL = True
     print("[NLU] ✓ Modèle NER chargé")
-except OSError:
+except Exception as exc:
     _nlp_ner = None
     _USE_NER_MODEL = False
-    print("[NLU] ⚠ Modèle NER absent → fallback Matcher")
+    print(f"[NLU] ⚠ Modèle NER absent → fallback Matcher ({exc})")
 
 # ─────────────────────────────────────────────────────────────────
 # Fallback regex (intent) — utilisé si NLU_MODEL absent

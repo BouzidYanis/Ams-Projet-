@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, Callable, cast
 import importlib
 import re
 
@@ -39,11 +39,25 @@ class NLU:
 
     def __init__(self, **kwargs):
         # Chargement paresseux des parseurs par langue.
-        self._parsers = {}
+        self.parsers: dict[str, Any] = {}
+        self._parsers = self.parsers
         self._parser_modules = {
             "fr": "app.nlu_models.francais.nlu_train",
             "en": "app.nlu_models.english.nlu_train",
         }
+        self.parsers["fr"] = self._load_language_parser("francais")
+        self.parsers["en"] = self._load_language_parser("english")
+
+        # Fallback historique si un parseur de langue n'est pas importable.
+        self.fallback_parser = matcher_parse
+
+    def _load_language_parser(self, folder_name: str):
+        module_name = f"app.nlu_models.{folder_name}.nlu_train"
+        try:
+            return importlib.import_module(module_name)
+        except Exception as exc:
+            print(f"[NLU] Erreur import parseur pour '{folder_name[:2]}': {exc}")
+            return None
 
     def _normalize_destination_key(self, raw: str) -> str:
         """Normalize a destination string to a key usable by the tablet map."""
@@ -134,15 +148,18 @@ class NLU:
         text_in = (text or "").strip()
         if not text_in:
             return {"intent": "unknown", "confidence": 0.0, "entities": {}, "raw_text": text}
-        parser = self._load_parser_for_lang(lang)
-        if parser is None:
-            result = matcher_parse(text_in)
-        else:
-            try:
+        parser_module = self.parsers.get((lang or "fr").lower())
+        parser = parser_module or self.fallback_parser
+
+        try:
+            parse_fn = cast(Callable[[str], Dict[str, Any]], getattr(parser_module, "traiter_requete", None))
+            if callable(parse_fn):
+                result = parse_fn(text_in)
+            else:
                 result = parser(text_in)
-            except Exception as e:
-                print(f"[NLU] Erreur pendant parsing '{lang}' (fallback): {e}")
-                result = matcher_parse(text_in)
+        except Exception as exc:
+            print(f"[NLU] Erreur pendant parsing pour '{lang}': {exc}")
+            result = self.fallback_parser(text_in)
 
         # Intent : mapper vers les noms utilisés par le DialogManager
         raw_intent = result.get("intent", "inconnu")
@@ -150,7 +167,8 @@ class NLU:
         confidence = result.get("confidence", 0.0)
 
         # Entities : normaliser les clés FR/EN vers l'API
-        entities = self._normalize_entities(result.get("entites", {}))
+        matcher_ents = result.get("entites") or result.get("entities") or {}
+        entities = self._normalize_entities(matcher_ents)
 
         return {
             "intent": intent,
