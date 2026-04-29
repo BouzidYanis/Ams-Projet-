@@ -42,8 +42,9 @@ def _load_spacy_model(path: Path, fallback_name: str | None = None):
     initialisé (tables de lemmatisation manquantes), on retombe sur un pipeline
     français minimal qui suffit pour le matcher et le vocabulaire.
     """
+    # Essayer le modèle local d'abord EN EXCLUANT le lemmatizer
     try:
-        return spacy.load(path), True
+        return spacy.load(path, exclude=["lemmatizer"]), True
     except Exception as exc:
         print(f"[NLU] ⚠ Chargement impossible de {path}: {exc}")
 

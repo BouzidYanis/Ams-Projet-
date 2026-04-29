@@ -16,15 +16,20 @@ NER_MODEL = BASE_DIR / "models" / "ner_model_en"
 
 
 def _load_model(path: Path, fallback_names: tuple[str, ...], lang: str):
+    # Try local model first, excluding lemmatizer to avoid [E912] errors
     try:
-        return spacy.load(path), True
+        return spacy.load(path, exclude=["lemmatizer"]), True
     except Exception:
-        # Try fallback models, first with lemmatizer excluded
-        for name in fallback_names:
-            try:
-                return spacy.load(name, exclude=["lemmatizer"]), False
-            except Exception:
-                continue
+        pass
+    
+    # Try fallback models, also with lemmatizer excluded
+    for name in fallback_names:
+        try:
+            return spacy.load(name, exclude=["lemmatizer"]), False
+        except Exception:
+            continue
+    
+    # Last resort: blank pipeline
     return spacy.blank(lang), False
 
 
