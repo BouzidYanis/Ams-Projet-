@@ -275,7 +275,7 @@ class AudioSense:
                     chunks.append(full_path)
 
                     # 3. Analyse du silence sur le dernier chunk
-                    if not self.is_silent(full_path, silence_threshold):
+                    if not self.is_silent(full_path, speech_ratio_threshold=0.3):  # Increased threshold for tighter filtering
                         last_voice_time = time.time()
                     
                     # 4. Sortie si silence trop long
@@ -338,7 +338,7 @@ class AudioSense:
                 # If the file isn't VAD-compatible, fallback to RMS
                 params = wf.getparams()
                 frames = wf.readframes(params[3])
-                return audioop.rms(frames, params[1]) < 800
+                return audioop.rms(frames, params[1]) < 1500  # Increased threshold for tighter filtering
 
             # VAD settings: 30ms frames are most stable
             frame_duration_ms = 30

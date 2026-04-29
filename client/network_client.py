@@ -2,10 +2,13 @@
 import requests
 import os
 
+REQUEST_TIMEOUT = 60
+
 class NetworkClient:
     def __init__(self, server_url, timeout):
         self.server = server_url
         self.timeout = timeout
+        self.dialog_session_id = None
 
     def send_asr_file(self, file_path):
         """ Envoie le fichier WAV au serveur ASR """
@@ -21,17 +24,43 @@ class NetworkClient:
             print(u" Erreur ASR: {0}".format(str(e)).encode('utf-8'))
             return None
 
-    def send_dialog_text(self, text, session_id=None, lang="fr"):
-        """ Envoie le texte reconnu au DialogManager """
-        url = "{0}/v1/respond".format(self.server)
-        payload = {"text": text, "lang": lang}
-        if session_id:
-            payload["session_id"] = session_id
-        
+    def send_dialog_text(self, text, lang="fr", session_id=None, user_name=None):
+        """Envoie le texte transcrit au DialogManager et retourne la réponse."""
+        payload = {
+            "text": text,
+            "lang": lang,
+            "session_id": session_id
+        }
+        # Ajouter le nom si disponible
+        if user_name:
+            payload["user_name"] = user_name
+
         try:
-            r = requests.post(url, json=payload, timeout=self.timeout)
-            r.raise_for_status()
-            return r.json()
+            url = "{0}/v1/respond".format(self.server)
+            resp = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT)
+            if resp.ok:
+                data = resp.json()
+                self.dialog_session_id = data.get("session_id", self.dialog_session_id)
+                return data
+            else:
+                print("[DIALOG] Erreur HTTP {}: {}".format(resp.status_code, resp.text[:200]))
+                return None
         except Exception as e:
-            print("Erreur Dialog: {0}".format(str(e)))
+            print("[DIALOG] Erreur envoi: " + repr(e))  # FIX
             return None
+
+#Vielle Version
+    # def send_dialog_text(self, text, session_id=None, lang="fr"):
+    #     """ Envoie le texte reconnu au DialogManager """
+    #     url = "{0}/v1/respond".format(self.server)
+    #     payload = {"text": text, "lang": lang}
+    #     if session_id:
+    #         payload["session_id"] = session_id
+        
+    #     try:
+    #         r = requests.post(url, json=payload, timeout=self.timeout)
+    #         r.raise_for_status()
+    #         return r.json()
+    #     except Exception as e:
+    #         print("Erreur Dialog: {0}".format(str(e)))
+    #         return None

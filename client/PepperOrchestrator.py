@@ -10,6 +10,8 @@ import time
 import os
 import paramiko  # pour récupérer le fichier depuis le robot via SCP/SFTP
 import qi
+from affichage_dynamique import PepperWebDisplayService
+from nav import Navigation
 from Queue import Queue
 
 TMP_DIR = "/tmp/pepper"
@@ -17,6 +19,10 @@ TMP_DIR = "/tmp/pepper"
 # Configuration
 PEPPER_IP = "192.168.13.230"
 PEPPER_PORT = 9559
+
+#Copier tel quel de chez Yanis
+WEB_BASE_URL = "http://10.126.5.245:5500/"  # Ou "http://localhost:8000/" pour test
+WEB_URL = WEB_BASE_URL
 
 class PepperConnector:
     """
@@ -26,29 +32,140 @@ class PepperConnector:
         self.ip = ip
         self.port = port
         self.session = qi.Session()
+        
+        # Core Services
         self.tts = None
-        self.tablet = None
+        self.motion = None
+        self.posture = None
+        self.leds = None
         self.memory = None
+        
+        # Specialized Services
+        self.tablet = None
+        self.nav = None
+        self.audio = None
+        
+        # Behavioral Services (To be disabled)
+        self.basic_awareness = None
+        self.autonomous_life = None
 
     def connect(self):
-        """Établit la connexion et initialise les services de base."""
+        """Établit la connexion et initialise les services."""
         connection_url = "tcp://{}:{}".format(self.ip, self.port)
+        
+        # --- 1. CRITICAL SERVICES (The "Must-Haves") ---
         try:
             self.session.connect(connection_url)
             print(u"[CONNEXION] Connecté à Pepper sur {}".format(connection_url))
             
-            # Initialisation des services communs pour la production
+            # Initialization of core services
             self.tts = self.session.service("ALAnimatedSpeech")
             self.memory = self.session.service("ALMemory")
-            return True
+            self.motion = self.session.service("ALMotion")
+            self.posture = self.session.service("ALRobotPosture")
+            self.leds = self.session.service("ALLeds")
+            
+            # Configure Language
+            tts_config = self.session.service("ALTextToSpeech")
+            tts_config.setLanguage("French")
+
         except RuntimeError as e:
-            print(u"[ERREUR] Impossible de se connecter: {}".format(e))
+            print(u"[ERREUR CRITIQUE] Connexion échouée: {}".format(e))
             return False
 
-    def say(self, text):
-        """Méthode utilitaire pour faire parler Pepper."""
-        if self.tts:
-            self.tts.say(text)
+        # --- 2. OPTIONAL CONFIGURATION (The "Nice-to-Haves") ---
+        # We put these in separate try/except so if one fails, the others still try to run.
+        
+        # Disable Basic Awareness (Stop Pepper from moving his head to everyone)
+        try:
+            self.basic_awareness = self.session.service("ALBasicAwareness")
+            self.basic_awareness.stopAwareness()
+            print("[INIT] Basic Awareness désactivée.")
+        except Exception as e:
+            print("[INIT] Info: ALBasicAwareness non disponible ou déjà stoppé.")
+
+        # Pause Native ASR (Important so the robot doesn't "listen" to itself)
+        try:
+            asr_native = self.session.service("ALSpeechRecognition")
+            asr_native.pause(True)
+            print("[INIT] ASR natif mis en pause.")
+        except Exception as e:
+            print("[INIT] Info: ASR natif non disponible sur ce modèle.")
+
+        try:
+            self.tablet = PepperWebDisplayService(self.session)
+        except Exception as e:
+            print("[INIT] Tablette non disponible: {}".format(e))
+            self.tablet = None
+
+        # 4. Navigation
+        try:
+            self.nav = Navigation(WEB_URL, self.session)
+        except Exception as e:
+            print("[INIT] Navigation non disponible: {}".format(e))
+            self.nav = None
+
+        # If we reached this point, the connection is solid!
+        return True
+
+    def robot_say(self, text):
+        """
+        Fait parler le robot de manière synchrone (bloquante).
+        Gère l'encodage UTF-8 et attend la fin de l'élocution.
+        """
+        if not text:
+            return
+
+        # 1. GESTION DE L'ENCODAGE (Python 2.7 Safety)
+        # On s'assure d'envoyer des bytes UTF-8 à NAOqi
+        if isinstance(text, unicode):
+            text_bytes = text.encode("utf-8")
+        else:
+            text_bytes = text
+
+        print("[TTS] " + text_bytes)
+
+        try:
+            # 2. EXECUTION SYNCHRONE
+            # .post lance la tâche en arrière-plan et retourne un ID
+            # .wait(id, 0) bloque le script jusqu'à ce que cet ID soit terminé
+            if self.tts:
+                say_id = self.tts.post.say(text_bytes)
+                self.tts.wait(say_id, 0) 
+            else:
+                print("[TTS] Erreur: Service TTS non initialisé.")
+                
+        except Exception as e:
+            # Triple protection pour l'affichage de l'erreur en console
+            try:
+                err_msg = str(e)
+            except:
+                err_msg = "Erreur de communication Qi"
+            print("[TTS] Erreur lors de l'appel: " + err_msg)
+
+    def robot_gesture(self, gesture_name):
+        """Lance un geste/animation sur le robot."""
+        try:
+            if gesture_name == "wave":
+                self.motion.setAngles("RShoulderPitch", -0.5, 0.2)
+                time.sleep(0.5)
+                self.motion.setAngles("RShoulderPitch", 1.0, 0.2)
+            elif gesture_name == "nod":
+                self.motion.setAngles("HeadPitch", 0.3, 0.3)
+                time.sleep(0.3)
+                self.motion.setAngles("HeadPitch", -0.1, 0.3)
+                time.sleep(0.3)
+                self.motion.setAngles("HeadPitch", 0.0, 0.2)
+        except Exception as e:
+            print("[GESTURE] Erreur: {}".format(e))
+
+    def robot_show_url(self, url):
+        """Affiche une URL sur la tablette."""
+        if self.tablet:
+            try:
+                self.tablet.showUrl(url)
+            except Exception as e:
+                print("[TABLET] Erreur: {}".format(e))
 
     def get_session(self):
         """Renvoie la session pour PepperAudioCapture."""
