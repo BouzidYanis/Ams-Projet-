@@ -1,16 +1,15 @@
 from typing import Dict, Any
+import importlib
 import re
-import os
-import spacy
-
 
 from app.nlu_train import traiter_requete as matcher_parse
 
 
 class NLU:
 
-    # Mapping intent nlu_train → intent API
+    # Mapping intent NLU embarqué → intent API
     _INTENT_MAP = {
+        # français
         "salutation": "greeting",
         "demander_heure": "ask_hours",
         "demander_activite": "ask_activities",
@@ -19,18 +18,32 @@ class NLU:
         "qui": "who_are_you",
         "ask_available_slots": "ask_available_slots",
         "demander_mes_reservations": "ask_my_reservations",
+        "ask_pricing": "ask_pricing",
+        "cancel_booking": "cancel_booking",
+        "demander_horaire_activite_inscrite": "ask_registered_activity_schedule",
+        "demander_evenements_speciaux": "ask_special_events",
+        # english
+        "greeting": "greeting",
+        "ask_hours": "ask_hours",
+        "ask_activity": "ask_activities",
+        "ask_pricing": "ask_pricing",
+        "ask_location": "navigate",
+        "reserve": "book_activity",
+        "who_are_you": "who_are_you",
+        "ask_my_bookings": "ask_my_reservations",
+        "ask_registered_activity_schedule": "ask_registered_activity_schedule",
+        "ask_special_events": "ask_special_events",
         "inconnu": "unknown",
+        "unknown": "unknown",
     }
 
     def __init__(self, **kwargs):
-        # Chargement paresseux de modèles spaCy par langue.
-        # Si aucun modèle disque n'est trouvé pour la langue, on retombe
-        # sur le parser rule-based `matcher_parse` défini dans `app.nlu_train`.
-        self.models = {}  # lang -> nlp
-        # dossier racine pour les modèles locaux
-        self.models_root = kwargs.get("models_root") or os.path.join(os.path.dirname(__file__), "nlu_models")
-        # mapping simple langue code -> dossier (tel qu'organisé dans repo)
-        self.lang_to_folder = {"fr": "francais", "en": "english"}
+        # Chargement paresseux des parseurs par langue.
+        self._parsers = {}
+        self._parser_modules = {
+            "fr": "app.nlu_models.francais.nlu_train",
+            "en": "app.nlu_models.english.nlu_train",
+        }
 
     def _normalize_destination_key(self, raw: str) -> str:
         """Normalize a destination string to a key usable by the tablet map."""
@@ -60,200 +73,84 @@ class NLU:
         s = s.replace("-", "_").replace(" ", "_")
         return s
 
-    def _find_spacy_model_path(self, lang: str) -> dict[str, str | None]:
-        """Retourne les chemins vers `nlu_model` et `ner_model` lorsqu'ils existent.
+    def _load_parser_for_lang(self, lang: str):
+        if lang in self._parsers:
+            return self._parsers[lang]
 
-        Renvoie un dict: {"nlu": path_or_None, "ner": path_or_None}
-        """
-        folder = self.lang_to_folder.get(lang, lang)
-        base = os.path.join(self.models_root, folder)
-        models_dir = os.path.join(base, "models")
-
-        nlu_path = None
-        ner_path = None
-
-        # Cas classique : chaque langue contient un dossier `models/<model_name>/...`
-        if os.path.isdir(models_dir):
-            for name in os.listdir(models_dir):
-                candidate = os.path.join(models_dir, name)
-                if os.path.isdir(candidate) and os.path.exists(os.path.join(candidate, "meta.json")):
-                    # Chercher si le nom du dossier indique son type
-                    lname = name.lower()
-                    if "nlu" in lname:
-                        nlu_path = candidate
-                    elif "ner" in lname:
-                        ner_path = candidate
-                    else:
-                        # Si on n'a encore rien, utilitaire fallback
-                        if not nlu_path:
-                            nlu_path = candidate
-                        elif not ner_path:
-                            ner_path = candidate
-
-        # Cas où le répertoire `models` est lui-même un modèle spaCy (export)
-        if os.path.exists(os.path.join(models_dir, "meta.json")):
-            # Utiliser comme nlu par défaut si absent
-            if not nlu_path:
-                nlu_path = models_dir
-
-        # Rechercher dossiers spécifiques `nlu_model` / `ner_model` (structure fournie)
-        nlu_dir_candidate = os.path.join(base, "nlu_model")
-        ner_dir_candidate = os.path.join(base, "ner_model")
-        if os.path.isdir(nlu_dir_candidate):
-            # Peut contenir un sous-dossier `models` ou être lui-même un modèle
-            if os.path.isdir(os.path.join(nlu_dir_candidate, "models")):
-                # prendre premier modèle à l'intérieur
-                for name in os.listdir(os.path.join(nlu_dir_candidate, "models")):
-                    cand = os.path.join(nlu_dir_candidate, "models", name)
-                    if os.path.isdir(cand) and os.path.exists(os.path.join(cand, "meta.json")):
-                        nlu_path = cand
-                        break
-            elif os.path.exists(os.path.join(nlu_dir_candidate, "meta.json")):
-                nlu_path = nlu_dir_candidate
-
-        if os.path.isdir(ner_dir_candidate):
-            if os.path.isdir(os.path.join(ner_dir_candidate, "models")):
-                for name in os.listdir(os.path.join(ner_dir_candidate, "models")):
-                    cand = os.path.join(ner_dir_candidate, "models", name)
-                    if os.path.isdir(cand) and os.path.exists(os.path.join(cand, "meta.json")):
-                        ner_path = cand
-                        break
-            elif os.path.exists(os.path.join(ner_dir_candidate, "meta.json")):
-                ner_path = ner_dir_candidate
-
-        return {"nlu": nlu_path, "ner": ner_path}
-
-    def _load_model_for_lang(self, lang: str, model_type: str = "nlu"):
-        """Charge et met en cache un modèle spaCy pour la langue et le type demandés.
-
-        model_type: 'nlu' ou 'ner'
-        Retourne None si indisponible.
-        """
-        assert model_type in ("nlu", "ner")
-
-        cache = self.models.setdefault(lang, {})
-        if model_type in cache and cache[model_type] is not None:
-            return cache[model_type]
-
-        paths = self._find_spacy_model_path(lang)
-        path = paths.get(model_type)
-        if not path:
-            cache[model_type] = None
+        module_name = self._parser_modules.get(lang)
+        if not module_name:
+            self._parsers[lang] = None
             return None
 
         try:
-            nlp = spacy.load(path)
-            cache[model_type] = nlp
-            print(f"[NLU] Modèle spaCy chargé pour '{lang}' ({model_type}): {path}")
-            return nlp
+            module = importlib.import_module(module_name)
+            parser = getattr(module, "traiter_requete", None)
+            self._parsers[lang] = parser
+            return parser
         except Exception as e:
-            print(f"[NLU] Erreur chargement modèle spaCy pour '{lang}' ({model_type}): {e}")
-            cache[model_type] = None
+            print(f"[NLU] Erreur import parseur pour '{lang}': {e}")
+            self._parsers[lang] = None
             return None
+
+    def _normalize_entities(self, raw_entities: Dict[str, Any]) -> Dict[str, list]:
+        entities: Dict[str, list] = {}
+
+        for sport_key in ("sports", "sport", "activity", "activities"):
+            for sport in raw_entities.get(sport_key, []) or []:
+                if sport:
+                    entities.setdefault("activity", []).append(sport)
+
+        for location_key in ("lieux", "lieu", "locations", "location"):
+            for lieu in raw_entities.get(location_key, []) or []:
+                normalized = self._normalize_destination_key(lieu)
+                if normalized:
+                    entities.setdefault("location", []).append(normalized)
+
+        for time_key in ("temps", "time", "times"):
+            for t in raw_entities.get(time_key, []) or []:
+                if t:
+                    entities.setdefault("time", []).append(t)
+
+        for number_key in ("nombres", "number", "numbers"):
+            for n in raw_entities.get(number_key, []) or []:
+                if n:
+                    entities.setdefault("number", []).append(n)
+
+        # Déduplication
+        for key, values in list(entities.items()):
+            seen = set()
+            unique = []
+            for value in values:
+                low = str(value).strip().lower()
+                if not low or low in seen:
+                    continue
+                seen.add(low)
+                unique.append(value)
+            entities[key] = unique
+
+        return entities
 
     def parse(self, text: str, lang: str = "fr") -> Dict[str, Any]:
         text_in = (text or "").strip()
         if not text_in:
             return {"intent": "unknown", "confidence": 0.0, "entities": {}, "raw_text": text}
-        # Tenter d'utiliser les modèles spaCy pour la langue demandée
-        nlu_nlp = self._load_model_for_lang(lang, "nlu")
-        ner_nlp = self._load_model_for_lang(lang, "ner")
-
-        if nlu_nlp or ner_nlp:
-            try:
-                raw_intent = None
-                confidence = 0.0
-                ent_sports = []
-                ent_lieux = []
-                ent_temps = []
-                ent_nombres = []
-
-                doc_nlu = None
-
-                # Si on a un modèle NLU dédié, l'utiliser pour l'intent
-                if nlu_nlp:
-                    doc_nlu = nlu_nlp(text_in)
-                    raw_intent = getattr(doc_nlu._, "intent", None)
-                    confidence = getattr(doc_nlu._, "confidence", 0.0)
-                    # certains modèles NLU exposent aussi des entités
-                    for ent in doc_nlu.ents:
-                        lab = ent.label_.upper()
-                        if lab in ("ACTIVITY", "SPORT"):
-                            ent_sports.append(ent.text)
-                        elif lab in ("LOCATION", "LIEU"):
-                            ent_lieux.append(ent.text)
-                        elif lab in ("DATE", "TIME"):
-                            ent_temps.append(ent.text)
-
-                # Utiliser le modèle NER dédié si disponible pour extraire des entités plus précises
-                if ner_nlp:
-                    doc_ner = ner_nlp(text_in)
-                    for ent in doc_ner.ents:
-                        lab = ent.label_.upper()
-                        if lab in ("ACTIVITY", "SPORT"):
-                            ent_sports.append(ent.text)
-                        elif lab in ("LOCATION", "LIEU"):
-                            ent_lieux.append(ent.text)
-                        elif lab in ("DATE", "TIME"):
-                            ent_temps.append(ent.text)
-                    # nombres via tokens
-                    ent_nombres = [token.text for token in doc_ner if token.like_num]
-                else:
-                    # fallback nombres si pas de ner model
-                    if doc_nlu is not None:
-                        ent_nombres = [token.text for token in doc_nlu if token.like_num]
-
-                # Si aucun intent détecté via modèle NLU -> fallback rule-based
-                if not raw_intent:
-                    result = matcher_parse(text_in)
-                else:
-                    result = {
-                        "intent": raw_intent or "inconnu",
-                        "confidence": float(confidence or 0.0),
-                        "entites": {
-                            "sports": list(dict.fromkeys(ent_sports)),
-                            "lieux": list(dict.fromkeys(ent_lieux)),
-                            "temps": ent_temps,
-                            "nombres": ent_nombres,
-                        },
-                    }
-
-            except Exception as e:
-                print(f"[NLU] Erreur pendant parsing spaCy (fallback): {e}")
-                result = matcher_parse(text_in)
-        else:
-            # Pas de modèle dispo -> fallback rule-based
+        parser = self._load_parser_for_lang(lang)
+        if parser is None:
             result = matcher_parse(text_in)
+        else:
+            try:
+                result = parser(text_in)
+            except Exception as e:
+                print(f"[NLU] Erreur pendant parsing '{lang}' (fallback): {e}")
+                result = matcher_parse(text_in)
 
         # Intent : mapper vers les noms utilisés par le DialogManager
         raw_intent = result.get("intent", "inconnu")
         intent = self._INTENT_MAP.get(raw_intent, raw_intent)
         confidence = result.get("confidence", 0.0)
 
-        # Entities : restructurer pour l'API
-        matcher_ents = result.get("entites", {})
-        entities: Dict[str, list] = {}
-
-        # Lieux → location (normalisés)
-        for lieu in matcher_ents.get("lieux", []):
-            normalized = self._normalize_destination_key(lieu)
-            if normalized:
-                entities.setdefault("location", []).append(normalized)
-
-        # Sports → activity
-        for sport in matcher_ents.get("sports", []):
-            if sport:
-                entities.setdefault("activity", []).append(sport)
-
-        # Temps → time
-        for t in matcher_ents.get("temps", []):
-            if t:
-                entities.setdefault("time", []).append(t)
-
-        # Nombres → number
-        for n in matcher_ents.get("nombres", []):
-            if n:
-                entities.setdefault("number", []).append(n)
+        # Entities : normaliser les clés FR/EN vers l'API
+        entities = self._normalize_entities(result.get("entites", {}))
 
         return {
             "intent": intent,
