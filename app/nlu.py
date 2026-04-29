@@ -59,6 +59,13 @@ class NLU:
             print(f"[NLU] Erreur import parseur pour '{folder_name[:2]}': {exc}")
             return None
 
+    def _normalize_lang_code(self, lang: str | None) -> str:
+        """Réduit les variantes de langue à une clé de parseur supportée."""
+        if not lang:
+            return "fr"
+        normalized = str(lang).strip().lower().replace("_", "-")
+        return normalized.split("-", 1)[0] or "fr"
+
     def _normalize_destination_key(self, raw: str) -> str:
         """Normalize a destination string to a key usable by the tablet map."""
         if raw is None:
@@ -208,7 +215,8 @@ class NLU:
         text_in = (text or "").strip()
         if not text_in:
             return {"intent": "unknown", "confidence": 0.0, "entities": {}, "raw_text": text}
-        parser_module = self.parsers.get((lang or "fr").lower())
+        lang_key = self._normalize_lang_code(lang)
+        parser_module = self.parsers.get(lang_key)
         parser = parser_module or self.fallback_parser
 
         try:
@@ -218,7 +226,7 @@ class NLU:
             else:
                 result = parser(text_in)
         except Exception as exc:
-            print(f"[NLU] Erreur pendant parsing pour '{lang}': {exc}")
+            print(f"[NLU] Erreur pendant parsing pour '{lang_key}': {exc}")
             result = self.fallback_parser(text_in)
 
         # Intent : mapper vers les noms utilisés par le DialogManager
