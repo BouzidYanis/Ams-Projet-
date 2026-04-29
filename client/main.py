@@ -4,13 +4,12 @@ Exemple de client minimal pour Pepper (Python 2.7.18).
 Envoie la transcription au serveur FastAPI et récupère la réponse du DialogManager.
 """
 import textwrap
+import qi
 import io
 import time
 import datetime
 import os
 import shutil
-
-import qi
 
 from ASREngine import ASREngine
 from audio_manager import AudioSense, AudioInputs
@@ -27,15 +26,24 @@ SERVER_URL = "http://localhost:8001"
 # SERVER_URL = "http://192.168.1.74:8000"
 # SERVER_URL = "http://10.60.55.34:8000"
 
-# 2. AUDIO SOURCE CONFIG
-#MODE = "phone"  # Options: "phone" or "pepper"
-MODE = "pepper"  # Options: "phone" or "pepper"
+# Base URL pour les pages web (tablette)
+WEB_BASE_URL = "http://10.126.5.245:5500/"  # Ou "http://localhost:8000/" pour test
 
-PHONE_URL = "http://10.126.8.53:8080/audio.wav"
-# PHONE_URL = "http://10.60.55.196:8080/audio.wav"
+# URLs des pages web
+WEB_NAVIGATION_URL = WEB_BASE_URL + "carte_navigation.html"
+WEB_RESERVATION_URL = WEB_BASE_URL + "reservation.html"
+# Shortcut pour compatibilité
+WEB_URL = WEB_BASE_URL #C'est quoi ça Yanis ?
+
+# 2. AUDIO SOURCE CONFIG
+MODE = "phone"  # Options: "phone" or "pepper"
+#MODE = "pepper"  # Options: "phone" or "pepper"
+
+PHONE_URL = "http://10.126.3.205:8080/audio.wav"
+#PHONE_URL = "http://10.60.55.196:8080/audio.wav"
 
 # 3. ROBOT HARDWARE CONFIG
-PEPPER_IP = "192.168.13.228"
+PEPPER_IP = "192.168.13.202"
 # PEPPER_IP = "127.0.0.1" # For local simulation (Choregraphe)
 PEPPER_PORT = 9559
 
@@ -76,6 +84,8 @@ except Exception as e:
 
 # =================================================================
 
+
+
 class PepperAppMain():
     def __init__(self):
         print(u"[MAIN] Initialisation du système...".encode('utf-8'))
@@ -89,10 +99,7 @@ class PepperAppMain():
             self.connector = PepperConnector(PEPPER_IP, PEPPER_PORT)
             if self.connector.connect():
                self.pepper_spec = PepperAudioCapture(self.connector.get_session())
-               self.session = qi.Session()
-               self.session.connect("tcp://{}:{}".format(PEPPER_IP, PEPPER_PORT))
-               self.tts = self.session.service("ALTextToSpeech")
-               self.tts.setLanguage("French")
+               self.connector.say("Application demarrée - Vous pouvez parlez")
             pass
             
         self.audio_inputs = AudioInputs(mode=MODE, pepper_specialist=self.pepper_spec, phone_url=PHONE_URL)
@@ -111,9 +118,10 @@ class PepperAppMain():
         self.is_running = True
         self.last_interaction = time.time()
         self.session_id = None
-
-
     
+        # Info utilisateur (ex: après reconnaissance faciale)
+        self.current_user = None
+
     def start(self):
         """Démarre le moteur ASR et la boucle de contrôle principale."""
         self.asr.start()
@@ -137,6 +145,18 @@ class PepperAppMain():
             self.asr.is_listening = True
             self.last_interaction = time.time()
             self._log_state("WAKE_WORD")
+
+            if MODE == "pepper":
+                user_name = self._try_face_recognition()
+                if user_name:
+                    print(u"[MAIN] Utilisateur identifié : {}".format(user_name).encode('utf-8'))
+                    # You can store this in the session to pass to the LLM later
+                    self.current_user = user_name
+            else :
+                self.current_user = "Patrice SEBASTIANO"
+
+            if MODE == "pepper":
+                self.connector.robot_say(u"Bonjour {}. Comment puis-je vous aider aujourd'hui ?".format(self.current_user).encode('utf-8'))
 
         # --- ÉTAPE 2 : TRAITEMENT DU TEXTE (Via Arm D) ---
         if self.asr.is_engaged and self.asr.committed_transcript.strip():
@@ -186,18 +206,34 @@ class PepperAppMain():
         #     msg_for_llm = text
 
         print(u"[LLM] Envoi au DialogManager...".encode('utf-8'))
-        response = self.net.send_dialog_text(text, session_id=self.session_id)
+        response = self.net.send_dialog_text(text, session_id=self.session_id, user_name=self.current_user)
+        
+        print("RESPONSE ", response)
+        print("\n")
+            
         
         if response:
             self.session_id = response.get("session_id")
             answer = response.get("text", "")
-            self.tts.say(answer)
+            actions = response.get("actions", {})
+                   
             print(u"===> Robot : {}".format(answer).encode('utf-8'))
             self._log_state("PEPPER_REPLY", pepper_answer=answer)
-
-            # Ici on appellera self.connector.say(answer) quand le robot sera là
-            # Pour l'instant, on simule le temps de parole
-            time.sleep(len(answer) * 0.05)
+            self._log_state("ACTIONS", pepper_answer=str(actions))
+            
+            print("PEPPER_REPLY", answer)
+            print("\n")
+            #Seulement sur le vrai pepper
+            if MODE == "pepper":
+                # Cette ligne bloque maintenant tout le script jusqu'à la fin du "parler"               
+                self.handle_actions(actions)
+                self.connector.robot_say(answer)
+                
+                if self.tablet:
+                    self.tablet.hidePage()
+            else:
+                # Simulation uniquement pour le mode phone
+                time.sleep(len(answer) * 0.05)
     
     def _go_to_sleep(self):
         """Réinitialise l'état en veille."""
@@ -311,7 +347,146 @@ class PepperAppMain():
             
         print(u"[MAIN] Système arrêté proprement.".encode('utf-8'))
 
-    
+    def handle_actions(self, actions):
+        """
+        Traite les actions retournées par le DialogManager.
+        actions est un dict avec un champ 'type' et des données associées.
+        """
+        if not actions or not isinstance(actions, dict):
+            return
+
+        action_type = actions.get("type", "")
+        print("[ACTION] Type: {}".format(action_type))
+
+        if action_type == "face_recognition":
+            # Lancer la reconnaissance faciale
+            print("[ACTION] Reconnaissance faciale demandee")
+            try:
+                from reco_face import FaceRecoFlow
+                flow = FaceRecoFlow(self.session)
+                flow.start_face_detection()
+                face_data = flow.wait_for_face(timeout_s=10)
+                if face_data:
+                    image_bytes, meta = flow.take_picture()
+                    result = flow.call_verify_api(image_bytes, meta=meta)
+                    print(result)
+                    if result and result.get("matched"):
+                        best = result.get("best_match", {})
+                        nom = best.get("nom", "")
+                        prenom = best.get("prenom", "")
+                        if isinstance(nom, unicode):
+                            nom = nom.encode("utf-8")
+                        if isinstance(prenom, unicode):
+                            prenom = prenom.encode("utf-8")
+                        self.connector.robot_say(u"Bonjour {} {} !".format(prenom, nom))
+                    else:
+                        print("[ACTION] Visage non reconnu")
+                else:
+                    print("[ACTION] Aucun visage detecte")
+                flow.stop_face_detection()
+            except Exception as e:
+                print("[TTS] Erreur reco faciale: " + repr(e))
+
+        elif action_type == "booking_confirmed":
+            # Réservation confirmée
+            booking = actions.get("booking", {})
+            print("[ACTION] Reservation confirmee: {}".format(booking))
+            self.connector.robot_gesture("nod")
+
+        elif action_type == "booking_slot_filling":
+            # En attente d'info pour la réservation - afficher le formulaire
+            missing = actions.get("missing_slot", "")
+            print("[ACTION] Slot manquant: {}".format(missing))
+            
+            # Afficher la page de réservation avec session_id
+            if self.dialog_session_id:
+                reservation_url = "{}?session_id={}".format(WEB_RESERVATION_URL, self.dialog_session_id)
+                self.connector.robot_show_url(reservation_url)
+                print("[ACTION] Page de reservation affichee: {}".format(reservation_url))
+
+        elif action_type == "navigate":
+            # Instructions de navigation
+            destination = actions.get("destination", "")
+            instructions = actions.get("instructions", "")
+
+            if self.nav and destination:
+                try:
+                    # Afficher la carte sur la tablette
+                    self.nav.afficher_carte(destination)
+                    print("[ACTION] Carte affichee pour: {}".format(
+                        destination.encode("utf-8") if isinstance(destination, unicode) else destination))
+                except Exception as e:
+                    print("[ACTION] Erreur affichage carte: {}".format(e))
+
+        elif action_type == "show_url":
+            url = actions.get("url", "")
+            if url:
+                self.connector.robot_show_url(url)
+        
+        elif action_type == "show_web_form":
+            # Afficher un formulaire web avec synchronisation
+            form_type = actions.get("form_type", "reservation")
+            if form_type == "reservation" and self.dialog_session_id:
+                reservation_url = "{}?session_id={}".format(WEB_RESERVATION_URL, self.dialog_session_id)
+                self.connector.robot_show_url(reservation_url)
+                print("[ACTION] Formulaire web affiche: {}".format(reservation_url))
+
+
+    def _try_face_recognition(self):
+            """
+            Lance la détection faciale et retourne (prenom, nom) ou (None, None).
+            """
+            try:
+                from reco_face import FaceRecoFlow
+                VERIFY_URL = SERVER_URL + "/v1/verify"
+
+                print("[FACE] Lancement de la detection faciale...")
+                self.leds.fadeRGB("FaceLeds", 0x00FFFF00, 0.3)
+
+                flow = FaceRecoFlow(self.session, verify_url=VERIFY_URL)
+                flow.start_face_detection()
+
+                face_data = flow.wait_for_face(timeout_s=8)
+                if not face_data:
+                    flow.stop_face_detection()
+                    return None, None
+
+                image_bytes, meta = flow.take_picture()
+                flow.stop_face_detection()
+
+                result = flow.call_verify_api(image_bytes, meta=meta)
+                print(result)
+                if result and result.get("matched") and result.get("best_match"):
+                    best = result["best_match"]
+                    # FIX: s'assurer que prenom/nom sont des str bytes et non unicode
+                    prenom = best.get("prenom", "") or ""
+                    nom = best.get("nom", "") or ""
+
+                    # Convertir en bytes UTF-8 pour l'affichage Python 2.7
+                    prenom_b = prenom.encode("utf-8") if isinstance(prenom, unicode) else prenom
+                    nom_b = nom.encode("utf-8") if isinstance(nom, unicode) else nom
+
+                    # FIX: utiliser b"" concatenation pour le print, pas .format() avec unicode
+                    print("[FACE] Personne reconnue: " + prenom_b + " " + nom_b)
+
+                    # Retourner les unicode originaux (pas les bytes) pour l'usage ultérieur
+                    return prenom, nom
+                else:
+                    print("[FACE] Personne non reconnue.")
+                    return None, None
+
+            except Exception as e:
+                # FIX: triple protection contre UnicodeEncodeError
+                try:
+                    err_str = unicode(e).encode("utf-8")
+                except Exception:
+                    try:
+                        err_str = str(e)
+                    except Exception:
+                        err_str = "erreur inconnue"
+                print("[FACE] Erreur reconnaissance faciale: " + err_str)
+                return None, None
+
 
 if __name__ == "__main__":
     app = PepperAppMain()
@@ -323,3 +498,5 @@ if __name__ == "__main__":
     except Exception as e:
         print(u"\n[FATAL] Erreur inattendue: {}".format(e).encode('utf-8'))
         app.stop()
+
+
