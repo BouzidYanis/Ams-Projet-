@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Questionnaire de Satisfaction</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            max-width: 900px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 20px;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .section {
+            margin-bottom: 40px;
+        }
+
+        .section-title {
+            font-size: 1.5em;
+            color: #333;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-icon {
+            font-size: 1.5em;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .question-label {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+            display: block;
+            font-size: 1.05em;
+        }
+
+        .likert-scale {
+            display: flex;
+            justify-content: space-around;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .likert-option {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+            flex: 1;
+        }
+
+        .likert-option input[type="radio"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .likert-option label {
+            cursor: pointer;
+            text-align: center;
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .likert-description {
+            font-size: 0.8em;
+            color: #999;
+            text-align: center;
+            min-height: 20px;
+        }
+
+        .conversation-history {
+            background: #f5f5f5;
+            border-radius: 10px;
+            padding: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 2px solid #e0e0e0;
+        }
+
+        .message {
+            margin-bottom: 10px;
+            padding: 8px;
+            border-radius: 5px;
+        }
+
+        .message.user {
+            background: #e3f2fd;
+            text-align: right;
+            border-left: 4px solid #2196F3;
+        }
+
+        .message.assistant {
+            background: #f3e5f5;
+            border-left: 4px solid #9c27b0;
+        }
+
+        .message-text {
+            color: #333;
+            font-size: 0.95em;
+            word-break: break-word;
+        }
+
+        .message-time {
+            font-size: 0.8em;
+            color: #999;
+            margin-top: 3px;
+        }
+
+        .nlu-section {
+            background: #f9f9f9;
+            border: 2px dashed #667eea;
+            border-radius: 10px;
+            padding: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .nlu-item {
+            background: white;
+            border-left: 4px solid #667eea;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+
+        .nlu-header {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+            font-size: 0.95em;
+        }
+
+        .nlu-field {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 8px;
+            font-size: 0.85em;
+        }
+
+        .nlu-field label {
+            font-weight: 500;
+            color: #666;
+        }
+
+        .nlu-field input {  
+            padding: 4px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        .original-text {
+            background: #fafafa;
+            padding: 8px;
+            border-radius: 4px;
+            font-style: italic;
+            color: #555;
+            margin-bottom: 8px;
+            padding-left: 12px;
+            border-left: 3px solid #ff9800;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-family: inherit;
+            font-size: 0.95em;
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 5px rgba(102, 126, 234, 0.3);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 2px solid #eee;
+        }
+
+        button {
+            padding: 12px 40px;
+            font-size: 1.05em;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .btn-submit {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-width: 200px;
+        }
+
+        .btn-submit:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-submit:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-cancel {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .btn-cancel:hover {
+            background: #d0d0d0;
+        }
+
+        .info-message {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            color: #2e7d32;
+        }
+
+        .error-message {
+            background: #ffebee;
+            border-left: 4px solid #f44336;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            color: #c62828;
+        }
+
+        .success-message {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            color: #2e7d32;
+            display: none;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .required-indicator {
+            color: #f44336;
+            font-weight: bold;
+        }
+
+        .score-summary {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
+            margin-top: 20px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+
+        .score-item {
+            text-align: center;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+        }
+
+        .score-item-label {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .score-item-value {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+
+            .header h1 {
+                font-size: 1.8em;
+            }
+
+            .nlu-field {
+                grid-template-columns: 1fr;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            .btn-submit, .btn-cancel {
+                width: 100%;
+            }
+
+            .score-summary {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📋 Questionnaire de Satisfaction</h1>
+            <p>Aidez-nous à améliorer nos services en répondant brièvement</p>
+        </div>
+
+        <div id="errorMessage" class="error-message"></div>
+        <div id="successMessage" class="success-message">
+            ✓ Questionnaire enregistré avec succès ! Merci pour votre retour.
+        </div>
+
+        <form id="surveyForm">
+            <!-- SECTION 1: Satisfaction Questions -->
+            <div class="section">
+                <div class="section-title">
+                    <span class="section-icon">⭐</span>
+                    Votre Satisfaction
+                </div>
+                <p class="info-message">
+                    Veuillez évaluer votre expérience sur une échelle de 1 (trés insatisfait) à 5 (très satisfait)
+                </p>
+
+                <div class="form-group">
+                    <label class="question-label">Facilité d'utilisation <span class="required-indicator">*</span></label>
+                    <div class="likert-scale">
+                        <div class="likert-option">
+                            <input type="radio" id="ease_1" name="ease_of_use" value="1" required>
+                            <label for="ease_1">
+                                <div class="likert-description">Très<br>difficile</div>
+                                1
+                            </label>
+                        </div>
+                        <div class="likert-option">
+                            <input type="radio" id="ease_2" name="ease_of_use" value="2">
+                            <label for="ease_2">
+                                <div class="likert-description">Difficile</div>
+                                2
+                            </label>
+                        </div>
+                        <div class="likert-option">
+                            <input type="radio" id="ease_3" name="ease_of_use" value="3">
+                            <label for="ease_3">
+                                <div class="likert-description">Neutre</div>
+                                3
+                            </label>
+                        </div>
+                        <div class="likert-option">
+                            <input type="radio" id="ease_4" name="ease_of_use" value="4">
+                            <label for="ease_4">
+                                <div class="likert-description">Facile</div>
+                                4
+                            </label>
+                        </div>
+                        <div class="likert-option">
+                            <input type="radio" id="ease_5" name="ease_of_use" value="5">
+                            <label for="ease_5">
+                                <div class="likert-description">Très<br>facile</div>
+                                5
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="question-label">Qualité des réponses <span class="required-indicator">*</span></label>
+                    <div class="likert-scale">
+                        <div class="likert-option">
+                            <input type="radio" id="quality_1" name="response_quality" value="1" required>
+                            <label for="quality_1">
+                                <div class="likert-description">Très<br>mauvaise</div>
+                                1
+                            </label>
+                        </div>
+                        <div class="likert-option">
+                            <input type="radio" id="quality_2" name="response_quality" value="2">
+                            <label for="quality_2">
+                                <div class="likert-description">Mauvaise</div>
+                                2
+                            </label>
+                        </div>
+                        <div class="likert-option">
+                            <input type="radio" id="quality_3" name="response_quality" value="3">
+                            <label for="quality_3">
+                                <div class="likert-description">Moyenne</div>
+                                3
+                            </label>
+                        </div>
+                        <div class="likert-option">
+                            <input type="radio" id="quality_4" name="response_quality" value="4">
+                            <label for="quality_4">
+                                <div class="likert-description">Bonne</div>
+                                4
+                            </label>
+                        </div>
+                        <div class="likert-option">
+                            <input type="radio" id="quality_5" name="response_quality" value="5">
+                            <label for="quality_5">
+                                <div class="likert-description">Très<br>bonne</div>
+                                5
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="question-label">Confort de l'interaction <span class="required-indicator">*</span></label>
+                    <div class="likert-scale">
+                        <div class="likert-option">
+                            <input type="radio" id="comfort_1" name="interaction_comfort" value="1" required>
+                            <label for="comfort_1">
+                                <div class="likert-description">Très<br>inconfortable</div>
+                                1
+                            </label>
+                        </div>
+                        <div class="likert-option">
+                            <input type="radio" id="comfort_2" name="interaction_comfort" value="2">
+                            <label for="comfort_2">
+                                <div class="likert-description">Inconfortable</div>
+                                2
+                            </label>
+                        </div>
+                        <div class="likert-option">
+                            <input type="radio" id="comfort_3" name="interaction_comfort" value="3">
+                            <label for="comfort_3">
+                                <div class="likert-description">Neutre</div>
+                                3
+                            </label>
+                        </div>
+                        <div class="likert-option">
+                            <input type="radio" id="comfort_4" name="interaction_comfort" value="4">
+                            <label for="comfort_4">
+                                <div class="likert-description">Confortable</div>
+                                4
+                            </label>
+                        </div>
+                        <div class="likert-option">
+                            <input type="radio" id="comfort_5" name="interaction_comfort" value="5">
+                            <label for="comfort_5">
+                                <div class="likert-description">Très<br>confortable</div>
+                                5
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Score Summary -->
+                <div class="score-summary">
+                    <div class="score-item">
+                        <div class="score-item-label">Facilité d'utilisation</div>
+                        <div class="score-item-value" id="scoreEase">—</div>
+                    </div>
+                    <div class="score-item">
+                        <div class="score-item-label">Qualité des réponses</div>
+                        <div class="score-item-value" id="scoreQuality">—</div>
+                    </div>
+                    <div class="score-item">
+                        <div class="score-item-label">Confort de l'interaction</div>
+                        <div class="score-item-value" id="scoreComfort">—</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION 2: Conversation Verification -->
+            <div class="section">
+                <div class="section-title">
+                    <span class="section-icon">💬</span>
+                    Vérification de la Conversation
+                </div>
+                <p class="info-message">
+                    Veuillez revérifier les transcriptions suivantes pour s'assurer de leur exactitude
+                </p>
+                <div class="conversation-history" id="conversationHistory">
+                    <p style="color: #999; text-align: center;">Chargement de l'historique...</p>
+                </div>
+            </div>
+
+            <!-- SECTION 3: NLU Verification -->
+            <div class="section">
+                <div class="section-title">
+                    <span class="section-icon">🧠</span>
+                    Vérification des Intentions Détectées
+                </div>
+                <p class="info-message">
+                    Veuillez corriger les intentions et entités détectées si nécessaire
+                </p>
+                <div class="nlu-section" id="nluSection">
+                    <p style="color: #999; text-align: center;">Chargement des données NLU...</p>
+                </div>
+            </div>
+
+            <!-- SECTION 4: Comments -->
+            <div class="section">
+                <div class="section-title">
+                    <span class="section-icon">💭</span>
+                    Commentaires Supplémentaires
+                </div>
+                <div class="form-group">
+                    <label class="question-label">Avez-vous des suggestions pour améliorer notre service ?</label>
+                    <textarea 
+                        id="additional_comments" 
+                        name="additional_comments" 
+                        placeholder="Vos commentaires ici... (optionnel)"
+                    ></textarea>
+                </div>
+            </div>
+
+            <!-- Hidden fields -->
+            <input type="hidden" id="session_id" name="session_id">
+            <div id="nluCorrectionData"></div>
+
+            <!-- Buttons -->
+            <div class="button-group">
+                <button type="button" class="btn-cancel" onclick="cancelSurvey()">Annuler</button>
+                <button type="submit" class="btn-submit" id="submitBtn">
+                    Soumettre le questionnaire
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        // Get session ID from URL or localStorage
+        function getSessionId() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('session_id') || localStorage.getItem('session_id') || null;
+        }
+
+        // Initialize form
+        function initializeForm() {
+            const sessionId = getSessionId();
+            if (!sessionId) {
+                showError("Session ID non trouvé. Veuillez retourner au robot.");
+                return;
+            }
+
+            document.getElementById('session_id').value = sessionId;
+            loadConversationHistory(sessionId);
+            loadNLUData(sessionId);
+        }
+
+        // Load conversation history
+        async function loadConversationHistory(sessionId) {
+            try {
+                const response = await fetch(`/api/session/${sessionId}/history`);
+                if (!response.ok) {
+                    console.warn("Impossible de charger l'historique");
+                    document.getElementById('conversationHistory').innerHTML = 
+                        '<p style="color: #999;">Historique non disponible</p>';
+                    return;
+                }
+
+                const data = await response.json();
+                const history = data.history || [];
+                
+                if (history.length === 0) {
+                    document.getElementById('conversationHistory').innerHTML = 
+                        '<p style="color: #999;">Aucune conversation enregistrée</p>';
+                    return;
+                }
+
+                let historyHTML = '';
+                history.forEach((msg) => {
+                    const role = msg.role === 'user' ? 'user' : 'assistant';
+                    const roleLabel = role === 'user' ? 'Vous' : 'Robot';
+                    historyHTML += `
+                        <div class="message ${role}">
+                            <div class="message-text"><strong>${roleLabel}:</strong> ${escapeHtml(msg.content)}</div>
+                            <div class="message-time">${new Date(msg.timestamp).toLocaleTimeString('fr-FR')}</div>
+                        </div>
+                    `;
+                });
+
+                document.getElementById('conversationHistory').innerHTML = historyHTML;
+            } catch (error) {
+                console.error("Erreur loading conversation:", error);
+                document.getElementById('conversationHistory').innerHTML = 
+                    '<p style="color: #999;">Erreur lors du chargement</p>';
+            }
+        }
+
+        // Load NLU verification data
+        async function loadNLUData(sessionId) {
+            try {
+                const response = await fetch(`/api/session/${sessionId}/nlu-data`);
+                if (!response.ok) {
+                    console.warn("Impossible de charger les données NLU");
+                    document.getElementById('nluSection').innerHTML = 
+                        '<p style="color: #999;">Données NLU non disponibles</p>';
+                    return;
+                }
+
+                const data = await response.json();
+                const nluItems = data.nlu_items || [];
+
+                if (nluItems.length === 0) {
+                    document.getElementById('nluSection').innerHTML = 
+                        '<p style="color: #999;">Aucune donnée NLU à vérifier</p>';
+                    return;
+                }
+
+                let nluHTML = '';
+                nluItems.forEach((item, index) => {
+                    const uniqueId = `nlu_${index}`;
+                    nluHTML += `
+                        <div class="nlu-item">
+                            <div class="nlu-header">Énoncé ${index + 1}</div>
+                            <div class="original-text">"${escapeHtml(item.original_text)}"</div>
+                            <div class="nlu-field">
+                                <div>
+                                    <label>Intention prédite:</label>
+                                    <input type="text" value="${escapeHtml(item.predicted_intent)}" readonly style="background: #f5f5f5;" />
+                                </div>
+                                <div>
+                                    <label>Intention corrigée:</label>
+                                    <input type="text" id="${uniqueId}_corrected_intent" name="${uniqueId}_corrected_intent" 
+                                           placeholder="Laisser vide si correct" value="">
+                                </div>
+                            </div>
+                            <div class="nlu-field">
+                                <div style="grid-column: 1 / -1;">
+                                    <label>Entités corrigées (JSON optionnel):</label>
+                                    <input type="text" id="${uniqueId}_corrected_entities" name="${uniqueId}_corrected_entities"
+                                           placeholder='{"entity_type": "value"}' value="">
+                                </div>
+                            </div>
+                            <input type="hidden" name="${uniqueId}_original_text" value="${escapeHtml(item.original_text)}">
+                            <input type="hidden" name="${uniqueId}_predicted_intent" value="${escapeHtml(item.predicted_intent)}">
+                        </div>
+                    `;
+                });
+
+                document.getElementById('nluSection').innerHTML = nluHTML;
+            } catch (error) {
+                console.error("Erreur loading NLU data:", error);
+                document.getElementById('nluSection').innerHTML = 
+                    '<p style="color: #999;">Erreur lors du chargement</p>';
+            }
+        }
+
+        // Escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Show error message
+        function showError(message) {
+            document.getElementById('errorMessage').textContent = message;
+            document.getElementById('errorMessage').style.display = 'block';
+        }
+
+        // Show success message
+        function showSuccess() {
+            document.getElementById('successMessage').style.display = 'block';
+            document.getElementById('surveyForm').style.display = 'none';
+        }
+
+        // Update score display
+        function updateScores() {
+            const ease = document.querySelector('input[name="ease_of_use"]:checked')?.value;
+            const quality = document.querySelector('input[name="response_quality"]:checked')?.value;
+            const comfort = document.querySelector('input[name="interaction_comfort"]:checked')?.value;
+
+            document.getElementById('scoreEase').textContent = ease || '—';
+            document.getElementById('scoreQuality').textContent = quality || '—';
+            document.getElementById('scoreComfort').textContent = comfort || '—';
+        }
+
+        // Cancel survey
+        function cancelSurvey() {
+            if (confirm('Êtes-vous sûr de vouloir annuler ? Les données ne seront pas sauvegardées.')) {
+                window.close();
+            }
+        }
+
+        // Collect NLU corrections from form
+        function collectNLUCorrections() {
+            const corrections = [];
+            const nluItems = document.querySelectorAll('.nlu-item');
+            
+            nluItems.forEach((item, index) => {
+                const uniqueId = `nlu_${index}`;
+                const correctedIntent = document.getElementById(`${uniqueId}_corrected_intent`)?.value || '';
+                const correctedEntitiesStr = document.getElementById(`${uniqueId}_corrected_entities`)?.value || '{}';
+                const originalText = document.querySelector(`input[name="${uniqueId}_original_text"]`)?.value || '';
+                const predictedIntent = document.querySelector(`input[name="${uniqueId}_predicted_intent"]`)?.value || '';
+
+                // Only add if there are corrections
+                if (correctedIntent.trim() || correctedEntitiesStr.trim() !== '{}') {
+                    try {
+                        const correctedEntities = JSON.parse(correctedEntitiesStr);
+                        corrections.push({
+                            original_text: originalText,
+                            predicted_intent: predictedIntent,
+                            corrected_intent: correctedIntent || predictedIntent,
+                            corrected_entities: correctedEntities
+                        });
+                    } catch (e) {
+                        console.warn(`Invalid JSON for entities at index ${index}`, e);
+                        corrections.push({
+                            original_text: originalText,
+                            predicted_intent: predictedIntent,
+                            corrected_intent: correctedIntent || predictedIntent,
+                            corrected_entities: {}
+                        });
+                    }
+                }
+            });
+
+            return corrections;
+        }
+
+        // Submit survey
+        async function submitSurvey(e) {
+            e.preventDefault();
+
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner"></span>Envoi en cours...';
+
+            try {
+                const ease = parseInt(document.querySelector('input[name="ease_of_use"]:checked')?.value);
+                const quality = parseInt(document.querySelector('input[name="response_quality"]:checked')?.value);
+                const comfort = parseInt(document.querySelector('input[name="interaction_comfort"]:checked')?.value);
+
+                if (!ease || !quality || !comfort) {
+                    showError('Veuillez compléter toutes les évaluations obligatoires');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Soumettre le questionnaire';
+                    return;
+                }
+
+                const corrections = collectNLUCorrections();
+                const payload = {
+                    session_id: document.getElementById('session_id').value,
+                    ease_of_use: ease,
+                    response_quality: quality,
+                    interaction_comfort: comfort,
+                    additional_comments: document.getElementById('additional_comments').value,
+                    nlu_corrections: corrections
+                };
+
+                const response = await fetch('/v1/survey/submit', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Erreur lors de la soumission');
+                }
+
+                showSuccess();
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 3000);
+
+            } catch (error) {
+                console.error('Erreur:', error);
+                showError('Erreur lors de la soumission: ' + error.message);
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Soumettre le questionnaire';
+            }
+        }
+
+        // Event listeners
+        document.getElementById('surveyForm').addEventListener('submit', submitSurvey);
+        document.querySelectorAll('input[name="ease_of_use"], input[name="response_quality"], input[name="interaction_comfort"]')
+            .forEach(el => el.addEventListener('change', updateScores));
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', initializeForm);
+    </script>
+</body>
+</html>

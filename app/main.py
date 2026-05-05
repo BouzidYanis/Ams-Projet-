@@ -118,6 +118,20 @@ class ReservationRequest(BaseModel):
     salle: str
     creneau: Creneau
 
+class NLUCorrectionItem(BaseModel):
+    original_text: str
+    predicted_intent: str
+    corrected_intent: Optional[str] = None
+    corrected_entities: Optional[Dict[str, Any]] = None
+
+class SurveySubmitRequest(BaseModel):
+    session_id: str
+    ease_of_use: int  # 1-5
+    response_quality: int  # 1-5
+    interaction_comfort: int  # 1-5
+    additional_comments: Optional[str] = None
+    nlu_corrections: Optional[list[NLUCorrectionItem]] = []
+
 
 
 @app.get("/")
@@ -130,6 +144,7 @@ def root():
             "ASR": "/v1/asr",
             "Parse": "/v1/parse",
             "Respond": "/v1/respond",
+            "Satisfaction Survey": "/satisfaction.html",
             "Reservation": "/reservation.html",
             "WebSocket": "/ws/reservation/{session_id}"
         }
@@ -145,6 +160,20 @@ async def get_reservation_page():
     
     try:
         with open(reservation_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        return HTMLResponse(content=content)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/satisfaction.html")
+async def get_satisfaction_page():
+    """Retourne la page HTML du questionnaire de satisfaction"""
+    satisfaction_path = os.path.join(os.path.dirname(__file__), "..", "satisfaction.html")
+    if not os.path.exists(satisfaction_path):
+        raise HTTPException(status_code=404, detail="satisfaction.html not found")
+    
+    try:
+        with open(satisfaction_path, "r", encoding="utf-8") as f:
             content = f.read()
         return HTMLResponse(content=content)
     except Exception as e:
@@ -242,7 +271,7 @@ async def respond(req: RespondRequest):
     #     return RespondResponse(text=response_text, actions={}, session_id=session_id)
 
     try:
-        response_text, actions = dialog.handle(session_id, parse_result)
+        response_text, actions = dialog.handle(session_id, parse_result, lang=req.lang or "fr")
         print(f"[RESPOND] Dialog réponse: {response_text}")
         print(f"[RESPOND] Actions: {actions}")
     except Exception as e:
@@ -371,6 +400,133 @@ def cancel_reservation_endpoint(reservation_id: str, user_name: Optional[str] = 
     except Exception as e:
         print(f"[ERROR] Erreur annulation: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/v1/survey/submit")
+def submit_survey(req: SurveySubmitRequest):
+    """
+    Endpoint pour soumettre le questionnaire de satisfaction post-session.
+    
+    Valide les scores Likert (1-5), enregistre les corrections NLU,
+    stocke tout dans MongoDB et ferme la session proprement.
+    """
+    try:
+        # Validation des scores
+        if not (1 <= req.ease_of_use <= 5):
+            raise HTTPException(status_code=400, detail="ease_of_use doit être entre 1 et 5")
+        if not (1 <= req.response_quality <= 5):
+            raise HTTPException(status_code=400, detail="response_quality doit être entre 1 et 5")
+        if not (1 <= req.interaction_comfort <= 5):
+            raise HTTPException(status_code=400, detail="interaction_comfort doit être entre 1 et 5")
+        
+        # Préparer les corrections NLU
+        nlu_corrections = []
+        if req.nlu_corrections:
+            for correction in req.nlu_corrections:
+                nlu_corrections.append({
+                    "original_text": correction.original_text,
+                    "predicted_intent": correction.predicted_intent,
+                    "corrected_intent": correction.corrected_intent or correction.predicted_intent,
+                    "corrected_entities": correction.corrected_entities or {}
+                })
+        
+        # Préparer les données de feedback
+        feedback_data = {
+            "ease_of_use": req.ease_of_use,
+            "response_quality": req.response_quality,
+            "interaction_comfort": req.interaction_comfort,
+            "additional_comments": req.additional_comments or "",
+            "nlu_corrections": nlu_corrections
+        }
+        
+        # Enregistrer le feedback
+        success = dialog.record_satisfaction_feedback(req.session_id, feedback_data)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Erreur lors de l'enregistrement du questionnaire")
+        
+        # Réinitialiser la session pour le prochain utilisateur
+        sessions.reset(req.session_id)
+        
+        return {
+            "status": "success",
+            "message": "Questionnaire enregistré avec succès",
+            "session_id": req.session_id,
+            "session_reset": True,
+            "ready_for_next_user": True
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Erreur lors de la soumission du questionnaire: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/session/{session_id}/history")
+def get_session_history(session_id: str):
+    """Récupère l'historique de conversation pour affichage dans le formulaire de satisfaction"""
+    try:
+        session_data = sessions.get(session_id)
+        if not session_data:
+            raise HTTPException(status_code=404, detail="session not found")
+        
+        history = session_data.get("history", [])
+        
+        # Formater l'historique pour le frontend
+        formatted_history = []
+        for msg in history:
+            formatted_history.append({
+                "role": msg.get("role", "user"),
+                "content": msg.get("content", ""),
+                "timestamp": msg.get("timestamp", datetime.now().isoformat())
+            })
+        
+        return {
+            "session_id": session_id,
+            "history": formatted_history,
+            "turn_count": len([m for m in history if m.get("role") == "user"])
+        }
+    except Exception as e:
+        print(f"[ERROR] Erreur retrieval conversation history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/session/{session_id}/nlu-data")
+def get_session_nlu_data(session_id: str):
+    """
+    Récupère les données NLU (intents prédits) pour chaque énoncé utilisateur
+    pour affichage dans le formulaire de satisfaction
+    """
+    try:
+        session_data = sessions.get(session_id)
+        if not session_data:
+            raise HTTPException(status_code=404, detail="session not found")
+        
+        history = session_data.get("history", [])
+        nlu_items = session_data.get("nlu_log", [])  # Log NLU stocké dans la session
+        
+        # Si pas de log NLU, créer à partir de l'historique
+        if not nlu_items and history:
+            nlu_items = []
+            for msg in history:
+                if msg.get("role") == "user":
+                    # Récupérer l'intent associé (si disponible dans metadata)
+                    nlu_items.append({
+                        "original_text": msg.get("content", ""),
+                        "predicted_intent": msg.get("intent", "unknown"),
+                        "entities": msg.get("entities", {})
+                    })
+        
+        return {
+            "session_id": session_id,
+            "nlu_items": nlu_items,
+            "total_items": len(nlu_items)
+        }
+    except Exception as e:
+        print(f"[ERROR] Erreur retrieval NLU data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @app.websocket("/ws/reservation/{session_id}")

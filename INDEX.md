@@ -2,6 +2,21 @@
 
 Bienvenue! Ce document vous guide dans la structure et l'utilisation du système de réservation synchronisé.
 
+## 🆕 **NOUVELLES FONCTIONNALITÉS - Phase 3 (Questionnaire de Satisfaction)**
+
+✨ **Nouvelle interface de satisfaction en fin de session**
+- 📋 Questionnaire Likert (3 critères, 1-5 scale)
+- 💬 Vérification de la transcription de conversation
+- 🧠 Correction interactive des intents/entities NLU
+- 💾 Stockage MongoDB automatique
+- 🔄 Reset de session pour prochain utilisateur
+
+**Démarrer le questionnaire**: `GET /satisfaction.html?session_id=XXX`
+**Documentation complète**: [SATISFACTION_SURVEY.md](SATISFACTION_SURVEY.md)
+**Tests**: `python test_survey.py`
+
+---
+
 ## 🚀 Démarrage Rapide (5 min)
 
 ### 1️⃣ Installation des dépendances

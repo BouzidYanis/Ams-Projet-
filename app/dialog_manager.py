@@ -4,7 +4,7 @@ Dialog manager that uses LLMClient to generate assistant replies and
 maintains per-session message history (user/assistant).
 Falls back to simple rule-based replies if LLM fails.
 """
-from typing import Tuple, Dict, Any, List
+from typing import Tuple, Dict, Any, List, Optional
 from app.sessions import SessionStore
 from app.llm import LLMClient, LLMError
 from app.navigation import get_navigation_instructions
@@ -52,7 +52,58 @@ RULES = {
     "ask_activities": "Nous proposons fitness, basket, natation, tennis, futsal et yoga. Laquelle vous intéresse ?",
 }
 
+RULES_FR = {
+    "greeting": [
+        "Bonjour ! Je peux vous aider pour les horaires, les inscriptions, les réservations ou pour vous orienter. Que souhaitez‑vous ?",
+        "Salut ! Comment puis-je vous aider aujourd'hui ?",
+        "Bonjour ! En quoi puis-je vous être utile pour votre visite à la salle multisports ?"
+    ],
+    "ask_hours": "La salle est ouverte du lundi au vendredi de 8h à 22h, et le weekend de 9h à 18h.",
+    "ask_activities": "Nous proposons fitness, basket, natation, tennis, futsal et yoga. Laquelle vous intéresse ?",
+}
+
+RULES_EN = {
+    "greeting": [
+        "Hello! I can help you with hours, registrations, bookings or directions. What would you like?",
+        "Hi! How can I help you today?",
+        "Welcome! How can I assist you with your visit to our multisport sports hall?"
+    ],
+    "ask_hours": "The facility is open Monday to Friday from 8am to 10pm, and weekends from 9am to 6pm.",
+    "ask_activities": "We offer fitness, basketball, swimming, tennis, futsal and yoga. Which one interests you?",
+}
+
 llm_openai = "llm_openai_config.json"
+
+# French and English system prompts
+DEFAULT_SYSTEM_PROMPT_FR = (
+    "Tu es l'assistant conversationnel d'un robot d'accueil dans une salle multisports. "
+    "Tu dois TOUJOURS répondre en français, de façon polie, chaleureuse, concise et utile. "
+    "Tu peux aider pour : informations (horaires, tarifs, activités), orientation dans le bâtiment "
+    "(vestiaires, terrains, salle de musculation, piscine, etc.), inscriptions, réservations et événements spéciaux. "
+    "Si l'utilisateur demande une réservation, demande toujours l'activité précise et le créneau "
+    "si ces informations sont manquantes. "
+    "Si la question est très simple (par exemple juste 'bonjour'), réponds par un message de bienvenue "
+    "en expliquant clairement ce que tu peux faire pour l'utilisateur. "
+    "Ne donne jamais d'informations personnelles sur d'autres personnes. "
+    "Si tu ne comprends pas la demande (intention inconnue), essaie d'être utile en proposant les services "
+    "que je peux t'offrir, ou demande une clarification sur ce que tu peux faire. "
+    "Sois toujours bienveillant et oriente l'utilisateur vers ce que je peux vraiment faire."
+)
+
+DEFAULT_SYSTEM_PROMPT_EN = (
+    "You are a conversational assistant for a welcome robot at a multisport sports hall. "
+    "You MUST ALWAYS respond in English, in a polite, warm, concise and helpful manner. "
+    "You can help with: information (hours, rates, activities), orientation in the building "
+    "(changing rooms, courts, gym hall, swimming pool, etc.), registrations, bookings and special events. "
+    "If the user asks for a booking, always ask for the precise activity and time slot "
+    "if this information is missing. "
+    "If the question is very simple (for example just 'hello'), respond with a welcome message "
+    "explaining clearly what you can do for the user. "
+    "Never give personal information about other people. "
+    "If you don't understand the request (unknown intent), try to be helpful by suggesting the services "
+    "I can offer you, or ask for clarification on what you can do. "
+    "Always be kind and guide the user towards what I can really do."
+)
 
 
 def _normalize_activity_name(value: str) -> str:
@@ -241,10 +292,40 @@ class DialogManager:
         except Exception:
             self.system_prompt = DEFAULT_SYSTEM_PROMPT
 
-    def _append_message(self, session_id: str, role: str, content: str) -> None:
+    def _get_system_prompt(self, lang: str = "fr") -> str:
+        """Retourne le system prompt approprié selon la langue."""
+        lang_key = (lang or "fr").strip().lower()
+        if lang_key.startswith("en"):
+            return DEFAULT_SYSTEM_PROMPT_EN
+        return DEFAULT_SYSTEM_PROMPT_FR
+
+    def _get_rules(self, lang: str = "fr") -> Dict[str, Any]:
+        """Retourne les rules appropriées selon la langue."""
+        lang_key = (lang or "fr").strip().lower()
+        if lang_key.startswith("en"):
+            return RULES_EN
+        return RULES_FR
+
+    def _append_message(self, session_id: str, role: str, content: str, metadata: Optional[Dict[str, Any]] = None) -> None:
+        """
+        Ajoute un message à l'historique avec métadonnées optionnelles.
+        Pour les messages utilisateur: metadata peut contenir {"intent": "...", "entities": {...}, "confidence": 0.9}
+        """
         session = self.sessions.get(session_id)
         history = session.setdefault("history", [])
-        history.append({"role": role, "content": content})
+        
+        message = {
+            "role": role,
+            "content": content,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        # Ajouter les métadonnées si fournies
+        if metadata:
+            message.update(metadata)
+        
+        history.append(message)
+        
         # limit history length to avoid huge prompts (keep last N pairs)
         max_msgs = 10
         if len(history) > max_msgs:
@@ -377,6 +458,260 @@ class DialogManager:
         except Exception as e:
             print(f"[ERROR] Erreur lors de la récupération des tarifs: {e}")
             return None
+
+    def record_satisfaction_feedback(self, session_id: str, feedback_data: Dict[str, Any]) -> bool:
+        """
+        Enregistre le questionnaire de satisfaction dans MongoDB.
+        
+        feedback_data doit contenir:
+        - ease_of_use: int (1-5)
+        - response_quality: int (1-5)
+        - interaction_comfort: int (1-5)
+        - additional_comments: str (optionnel)
+        - nlu_corrections: list of {original_text, predicted_intent, corrected_intent, corrected_entities}
+        """
+        try:
+            session = self.sessions.get(session_id)
+            history = session.get("history", [])
+            
+            satisfaction_record = {
+                "session_id": session_id,
+                "timestamp": datetime.now(),
+                "ease_of_use": feedback_data.get("ease_of_use"),
+                "response_quality": feedback_data.get("response_quality"),
+                "interaction_comfort": feedback_data.get("interaction_comfort"),
+                "additional_comments": feedback_data.get("additional_comments", ""),
+                "conversation_turns": len([m for m in history if m.get("role") == "user"]),
+                "session_duration": None,  # À calculer si timestamp de création disponible
+                "nlu_corrections": feedback_data.get("nlu_corrections", []),
+                "user_name": session.get("user_name"),
+                "user_role": session.get("user_role"),
+                "conversation_history_summary": self._summarize_conversation(history),
+            }
+            
+            # Insérer dans MongoDB
+            db.get_collection("satisfaction_feedback").insert_one(satisfaction_record)
+            print(f"[FEEDBACK] Questionnaire de satisfaction enregistré pour session {session_id}")
+            
+            # Enregistrer les corrections NLU pour la formation continue
+            for correction in feedback_data.get("nlu_corrections", []):
+                self._log_nlu_correction(correction, session_id)
+            
+            return True
+        except Exception as e:
+            print(f"[ERROR] Erreur lors de l'enregistrement du questionnaire: {e}")
+            return False
+
+    def _summarize_conversation(self, history: List[Dict[str, str]]) -> str:
+        """Crée un résumé court de la conversation."""
+        summary = []
+        for msg in history:
+            role = msg.get("role", "?")
+            content = msg.get("content", "")[:100]  # Limiter à 100 chars
+            summary.append(f"{role}: {content}")
+        return " | ".join(summary[-10:]) if summary else ""  # Derniers 10 messages
+
+    def _log_nlu_correction(self, correction: Dict[str, Any], session_id: str) -> None:
+        """Enregistre une correction NLU pour la formation continue."""
+        try:
+            correction_record = {
+                "session_id": session_id,
+                "timestamp": datetime.now(),
+                "original_text": correction.get("original_text"),
+                "predicted_intent": correction.get("predicted_intent"),
+                "corrected_intent": correction.get("corrected_intent"),
+                "corrected_entities": correction.get("corrected_entities", {}),
+                "source": "user_feedback",
+            }
+            db.get_collection("nlu_corrections").insert_one(correction_record)
+            print(f"[NLU] Correction enregistrée: {correction.get('original_text')} -> {correction.get('corrected_intent')}")
+        except Exception as e:
+            print(f"[ERROR] Erreur lors de l'enregistrement de la correction NLU: {e}")
+
+    def _extract_event_datetime(self, event_doc: Dict[str, Any]) -> datetime | None:
+        """Essaie d'extraire une date de début exploitable depuis un document d'événement."""
+        candidate_keys = (
+            "date_debut",
+            "start_date",
+            "date",
+            "debut",
+            "start",
+            "datetime",
+            "date_evenement",
+            "date_event",
+        )
+
+        for key in candidate_keys:
+            value = event_doc.get(key)
+            if not value:
+                continue
+            if isinstance(value, datetime):
+                return value
+            if isinstance(value, str):
+                text = value.strip()
+                if not text:
+                    continue
+                parsed_formats = (
+                    "%Y-%m-%d",
+                    "%Y-%m-%d %H:%M",
+                    "%Y-%m-%d %H:%M:%S",
+                    "%d/%m/%Y",
+                    "%d/%m/%Y %H:%M",
+                    "%d-%m-%Y",
+                    "%d-%m-%Y %H:%M",
+                    "%Y/%m/%d",
+                    "%Y/%m/%d %H:%M",
+                )
+                for fmt in parsed_formats:
+                    try:
+                        return datetime.strptime(text, fmt)
+                    except ValueError:
+                        continue
+                try:
+                    return datetime.fromisoformat(text.replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+        return None
+
+    def _extract_event_status(self, event_doc: Dict[str, Any]) -> str:
+        """Normalise le statut d'un événement pour filtrer les événements à venir/en cours."""
+        raw_status = event_doc.get("statut") or event_doc.get("status") or event_doc.get("state") or event_doc.get("etat") or ""
+        return " ".join(str(raw_status).strip().lower().split())
+
+    def _collect_special_events(self) -> List[Dict[str, Any]]:
+        """Récupère les événements spéciaux, tournois et compétitions en cours ou à venir."""
+        collection_names = ["evenements", "evenement", "events", "event", "tournois", "tournaments"]
+        today = datetime.now()
+        candidate_statuses = {"en cours", "en_cours", "ongoing", "ongoing event", "actif", "a venir", "à venir", "upcoming", "next", "coming", "planned", "programmé", "programme"}
+        collected: List[Dict[str, Any]] = []
+        seen_keys: set[tuple[str, str, str]] = set()
+
+        try:
+            available_collections = set(db.db.list_collection_names())
+        except Exception:
+            available_collections = set(collection_names)
+
+        for collection_name in collection_names:
+            if available_collections and collection_name not in available_collections:
+                continue
+
+            try:
+                documents = list(db.get_collection(collection_name).find({}))
+            except Exception as exc:
+                print(f"[DialogManager] Impossible de lire la collection '{collection_name}': {exc}")
+                continue
+
+            for doc in documents:
+                if not isinstance(doc, dict):
+                    continue
+
+                event_dt = self._extract_event_datetime(doc)
+                status = self._extract_event_status(doc)
+
+                is_upcoming = event_dt is None or event_dt.date() >= today.date()
+                is_ongoing = status in candidate_statuses or "en cours" in status or "ongoing" in status
+
+                if not (is_upcoming or is_ongoing):
+                    continue
+
+                title = str(
+                    doc.get("nom")
+                    or doc.get("titre")
+                    or doc.get("title")
+                    or doc.get("name")
+                    or doc.get("intitule")
+                    or "événement sans titre"
+                ).strip()
+                date_key = event_dt.isoformat() if event_dt else status or ""
+                unique_key = (collection_name, title.lower(), date_key)
+                if unique_key in seen_keys:
+                    continue
+                seen_keys.add(unique_key)
+
+                event_copy = json.loads(json.dumps(doc, default=str))
+                event_copy["source_collection"] = collection_name
+                event_copy["resolved_title"] = title
+                if event_dt:
+                    event_copy["resolved_date"] = event_dt.isoformat()
+                if status:
+                    event_copy["resolved_status"] = status
+                collected.append(event_copy)
+
+        def sort_key(event: Dict[str, Any]):
+            date_value = event.get("resolved_date") or event.get("date_debut") or event.get("date") or ""
+            if date_value:
+                try:
+                    return datetime.fromisoformat(str(date_value).replace("Z", "+00:00"))
+                except ValueError:
+                    pass
+            return datetime.max
+
+        collected.sort(key=sort_key)
+        return collected[:10]
+
+    def _format_special_events_fallback(self, events: List[Dict[str, Any]]) -> str:
+        """Construit un résumé simple si le LLM n'est pas disponible."""
+        if not events:
+            return "Je n'ai trouvé aucun événement spécial à venir pour le moment."
+
+        lines = ["Voici les événements spéciaux à venir ou en cours :"]
+        for event in events[:5]:
+            title = event.get("resolved_title") or event.get("nom") or event.get("titre") or "Événement"
+            parts = [f"- {title}"]
+            date_value = event.get("resolved_date") or event.get("date_debut") or event.get("date")
+            if date_value:
+                parts.append(f"le {date_value}")
+            location = event.get("lieu") or event.get("location") or event.get("salle") or event.get("endroit")
+            if location:
+                parts.append(f"à {location}")
+            status = event.get("resolved_status") or event.get("statut") or event.get("status")
+            if status:
+                parts.append(f"({status})")
+            lines.append(" ".join(parts))
+
+        return "\n".join(lines)
+
+    def _handle_special_events(self, session_id: str, history: List[Dict[str, str]], lang: str = "fr") -> Tuple[str, Dict[str, Any]]:
+        """Récupère les prochains événements et laisse le LLM formuler la réponse finale."""
+        system_prompt = self._get_system_prompt(lang)
+        events = self._collect_special_events()
+
+        if not events:
+            text = ("Je n'ai trouvé aucun événement spécial à venir pour le moment." 
+                   if lang.startswith("fr") 
+                   else "I found no special events coming up at the moment.")
+            self._append_message(session_id, "assistant", text)
+            return text, {"type": "special_events_empty", "events": []}
+
+        if lang.startswith("en"):
+            context_msg = (
+                "The user is asking for information about special events, tournaments or competitions upcoming or in progress. "
+                "Here is the data retrieved from the database. Use only this information, don't invent anything else, and write a clear response in English.\n\n"
+                "EVENT DATA:\n{}"
+            ).format(json.dumps(events, ensure_ascii=False, indent=2))
+        else:
+            context_msg = (
+                "L'utilisateur demande des informations sur des événements spéciaux, des tournois ou des compétitions en cours ou à venir. "
+                "Voici les données récupérées en base. Utilise uniquement ces informations, sans en inventer d'autres, et rédige une réponse claire en français.\n\n"
+                "DONNÉES ÉVÉNEMENTS:\n{}"
+            ).format(json.dumps(events, ensure_ascii=False, indent=2))
+
+        self._append_message(session_id, "assistant", context_msg)
+
+        try:
+            print("[DialogManager] ask_special_events: Appel LLM pour reformuler les événements")
+            assistant_text = self.llm.generate_chat(system_prompt, history)
+            if assistant_text and assistant_text.strip():
+                session = self.sessions.get(session_id)
+                session["history"][-1] = {"role": "assistant", "content": assistant_text}
+                self.sessions.update(session_id, session)
+                return assistant_text, {"type": "provide_special_events", "events": events}
+        except Exception as e:
+            print("[DialogManager] LLM error for ask_special_events:", e)
+
+        text = self._format_special_events_fallback(events)
+        self._append_message(session_id, "assistant", text)
+        return text, {"type": "provide_special_events", "events": events}
 
     def _is_room_booked(self, salle: str, jour: str, heure_debut: str,heure_fin:str) -> bool:
         """Vérifie dans la base de données si la salle est déjà réservée pour le créneau donné."""
@@ -687,6 +1022,145 @@ class DialogManager:
         })
         return salle_doc
 
+    def _normalize_person_name(self, value: str | None) -> str:
+        if not value:
+            return ""
+        cleaned = re.sub(r"\s*\([^)]*\)\s*$", "", str(value)).strip()
+        return " ".join(cleaned.split()).lower()
+
+    def _find_user_document(self, user_name: str | None):
+        """Recherche l'utilisateur en base à partir du nom fourni par la reconnaissance faciale."""
+        if not user_name:
+            return None
+
+        target = self._normalize_person_name(user_name)
+        users = db.get_collection("utilisateurs").find(
+            {},
+            {"user_id": 1, "nom": 1, "prenom": 1, "role": 1, "inscriptions": 1}
+        )
+
+        for user in users:
+            candidates = [
+                user.get("user_id", ""),
+                user.get("nom", ""),
+                user.get("prenom", ""),
+                f"{user.get('prenom', '')} {user.get('nom', '')}",
+                f"{user.get('nom', '')} {user.get('prenom', '')}",
+            ]
+            for candidate in candidates:
+                if self._normalize_person_name(candidate) == target:
+                    return user
+
+        return None
+
+    def _format_registered_activity_schedule(self, user_doc: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
+        """Construit le texte des horaires pour les activités inscrites de l'utilisateur."""
+        inscriptions = user_doc.get("inscriptions", []) or []
+        if not inscriptions:
+            return (
+                "Je n'ai trouvé aucune activité inscrite dans votre dossier.",
+                {"type": "registered_activity_schedule_empty"},
+            )
+
+        from bson import ObjectId
+
+        activity_col = db.get_collection("activite")
+        lines = []
+        not_found = []
+
+        for inscription in inscriptions:
+            activity_name = inscription.get("nom_activite") or inscription.get("activity_name") or ""
+            activity_id = inscription.get("activity_id") or inscription.get("activite_id")
+            activity_doc = None
+
+            if activity_id:
+                try:
+                    activity_doc = activity_col.find_one({"_id": ObjectId(str(activity_id))})
+                except Exception:
+                    activity_doc = None
+
+            if not activity_doc and activity_name:
+                activity_doc = activity_col.find_one(
+                    {"nom": {"$regex": f"^{re.escape(activity_name)}$", "$options": "i"}},
+                    {"_id": 0, "nom": 1, "planning": 1},
+                )
+
+            if not activity_doc:
+                if activity_name:
+                    not_found.append(activity_name)
+                continue
+
+            planning = activity_doc.get("planning", []) or []
+            activity_label = activity_doc.get("nom", activity_name or "activité inconnue")
+
+            if not planning:
+                lines.append(f"- {activity_label} : aucun horaire renseigné pour le moment.")
+                continue
+
+            slots_text = []
+            for slot in planning:
+                jour = slot.get("jour") or slot.get("day") or "jour inconnu"
+                start = slot.get("heure_debut") or slot.get("start") or "?"
+                end = slot.get("heure_fin") or slot.get("end") or "?"
+                salle = slot.get("salle") or slot.get("nom_salle") or slot.get("room")
+
+                piece = f"{jour} de {start} à {end}"
+                if salle:
+                    piece += f" en {salle}"
+                slots_text.append(piece)
+
+            lines.append(f"- {activity_label} : " + ", ".join(slots_text))
+
+        if not lines:
+            return (
+                "Je n'ai pas réussi à retrouver les horaires des activités inscrites.",
+                {"type": "registered_activity_schedule_not_found", "missing": not_found},
+            )
+
+        text = "Voici les horaires de vos activités inscrites en tant qu'adhérent :\n" + "\n".join(lines)
+        actions = {
+            "type": "registered_activity_schedule",
+            "activities": lines,
+            "missing": not_found,
+        }
+        return text, actions
+
+    def _handle_registered_activity_schedule(self, session_id: str, user_name: str | None, user_role: str | None) -> Tuple[str, Dict[str, Any]]:
+        """Vérifie le rôle utilisateur puis retourne les horaires des activités inscrites."""
+        normalized_role = self._normalize_person_name(user_role).replace("é", "e")
+        if normalized_role and normalized_role not in {"adherent", "adhérent"}:
+            text = "Cette information est réservée aux adhérents."
+            self._append_message(session_id, "assistant", text)
+            return text, {"type": "registered_activity_schedule_forbidden", "role": user_role}
+
+        user_doc = self._find_user_document(user_name)
+        if not user_doc:
+            text = "Je n'ai pas pu retrouver votre dossier utilisateur pour vérifier vos inscriptions."
+            self._append_message(session_id, "assistant", text)
+            return text, {"type": "registered_activity_schedule_user_not_found"}
+
+        db_role = self._normalize_person_name(user_doc.get("role", "")).replace("é", "e")
+        if db_role and db_role not in {"adherent", "adhérent"}:
+            text = "Cette information est réservée aux adhérents."
+            self._append_message(session_id, "assistant", text)
+            return text, {"type": "registered_activity_schedule_forbidden", "role": user_doc.get("role")}
+
+        text, actions = self._format_registered_activity_schedule(user_doc)
+        self._append_message(session_id, "assistant", text)
+        return text, actions
+
+    def _is_within_opening_hours(self, salle_doc: Dict[str, Any], heure_debut: str, heure_fin: str) -> bool:
+        """Vérifie que le créneau demandé reste dans les horaires d'ouverture de la salle."""
+        opening = salle_doc.get("horaire_ouverture", "08:00")
+        closing = salle_doc.get("horaire_fermeture", "22:00")
+
+        opening_minutes = parse_time_to_minutes(opening)
+        closing_minutes = parse_time_to_minutes(closing)
+        start_minutes = parse_time_to_minutes(heure_debut)
+        end_minutes = parse_time_to_minutes(heure_fin)
+
+        return opening_minutes <= start_minutes and end_minutes <= closing_minutes
+
     def _confirm_booking(self, session_id: str, slots: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
         """Confirme la réservation et nettoie les slots."""
         salle_key = slots.get("salle", "?")
@@ -706,6 +1180,22 @@ class DialogManager:
             self._clear_booking_slots(session_id)
             self._append_message(session_id, "assistant", text)
             return text, {"type": "booking_error", "reason": "salle_not_found"}
+
+        if not self._is_within_opening_hours(salle_doc, heure, heure_fin):
+            opening = salle_doc.get("horaire_ouverture", "08:00")
+            closing = salle_doc.get("horaire_fermeture", "22:00")
+            text = (
+                "Désolé, la salle {} est ouverte de {} à {}. "
+                "Le créneau demandé de {} à {} est en dehors des horaires d'ouverture."
+            ).format(salle_doc["nom"], opening, closing, heure, heure_fin)
+            self._clear_booking_slots(session_id)
+            self._append_message(session_id, "assistant", text)
+            return text, {
+                "type": "booking_error",
+                "reason": "outside_opening_hours",
+                "opening": opening,
+                "closing": closing,
+            }
 
         salle_id = salle_doc["_id"]
         salle_nom = salle_doc["nom"]  # "Salle A", "Salle B", etc.
@@ -848,17 +1338,23 @@ class DialogManager:
         self._append_message(session_id, "assistant", text)
         return text, actions
 
-    def handle(self, session_id: str, parse_result: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
+    def handle(self, session_id: str, parse_result: Dict[str, Any], lang: str = "fr") -> Tuple[str, Dict[str, Any]]:
         """
         parse_result should contain at least {"intent": str, "entities": {...}} and original text under 'raw_text'
+        lang: language code ("fr" for French, "en" for English)
         """
 
         # --- BLOC DE DEBUG ---
         print("\n" + "="*40)
         print("[DEBUG DM] Entrée dans handle()")
         print("[DEBUG DM] Session ID: {}".format(session_id))
+        print("[DEBUG DM] Langue: {}".format(lang))
         print("[DEBUG DM] parse_result complet: {}".format(json.dumps(parse_result, indent=2)))
         # ---------------------
+
+        # Select the appropriate system prompt and rules based on language
+        system_prompt = self._get_system_prompt(lang)
+        rules = self._get_rules(lang)
 
         intent = parse_result.get("intent", "unknown")
         entities = parse_result.get("entities", {})
@@ -866,9 +1362,14 @@ class DialogManager:
         user_name = parse_result.get("user_name", None)  # Nom issu de la reconnaissance faciale
         user_role = parse_result.get("user_role", None)  # Rôle issu de la reconnaissance faciale
 
-        # store user message in history
+        # store user message in history with NLU metadata
         if user_text:
-            self._append_message(session_id, "user", user_text)
+            nlu_metadata = {
+                "intent": intent,
+                "confidence": parse_result.get("confidence", 0.0),
+                "entities": entities
+            }
+            self._append_message(session_id, "user", user_text, metadata=nlu_metadata)
 
         session = self.sessions.get(session_id)
         history: List[Dict[str, str]] = session.get("history", [])
@@ -1119,7 +1620,7 @@ class DialogManager:
             self._append_message(session_id, "assistant", context_msg)
             try:
                 print("[DialogManager] greeting: Appel LLM pour générer une réponse adaptée")
-                assistant_text = self.llm.generate_chat(self.system_prompt, history)
+                assistant_text = self.llm.generate_chat(system_prompt, history)
                 if assistant_text and assistant_text.strip():
                     # Remplacer le message context par la vraie réponse LLM
                     session = self.sessions.get(session_id)
@@ -1145,7 +1646,7 @@ class DialogManager:
             return text, {}
         
         # --- Horaires du centre ---
-        if intent == "demander_heure":
+        if intent in {"demander_heure", "ask_hours"}:
             horaires = self._get_center_hours()
             
             # Construire le message avec les horaires
@@ -1159,7 +1660,7 @@ class DialogManager:
             
             try:
                 print("[DialogManager] demander_heure: Appel LLM pour reformuler les horaires")
-                assistant_text = self.llm.generate_chat(self.system_prompt, history)
+                assistant_text = self.llm.generate_chat(system_prompt, history)
                 if assistant_text and assistant_text.strip():
                     # Remplacer le message context par la vraie réponse LLM
                     session = self.sessions.get(session_id)
@@ -1213,7 +1714,7 @@ class DialogManager:
                     self._append_message(session_id, "assistant", context_msg)
                     try:
                         print("[DialogManager] ask_pricing: Appel LLM pour reformuler le tarif")
-                        assistant_text = self.llm.generate_chat(self.system_prompt, history)
+                        assistant_text = self.llm.generate_chat(system_prompt, history)
                         if assistant_text and assistant_text.strip():
                             session = self.sessions.get(session_id)
                             session["history"][-1] = {"role": "assistant", "content": assistant_text}
@@ -1264,7 +1765,7 @@ class DialogManager:
                     self._append_message(session_id, "assistant", context_msg)
                     try:
                         print("[DialogManager] ask_pricing (all): Appel LLM pour reformuler les tarifs")
-                        assistant_text = self.llm.generate_chat(self.system_prompt, history)
+                        assistant_text = self.llm.generate_chat(system_prompt, history)
                         if assistant_text and assistant_text.strip():
                             session = self.sessions.get(session_id)
                             session["history"][-1] = {"role": "assistant", "content": assistant_text}
@@ -1312,7 +1813,7 @@ class DialogManager:
                     self._append_message(session_id, "assistant", context_msg)
                     try:
                         print("[DialogManager] navigate: Appel LLM pour reformuler les instructions")
-                        assistant_text = self.llm.generate_chat(self.system_prompt, history)
+                        assistant_text = self.llm.generate_chat(system_prompt, history)
                         if assistant_text and assistant_text.strip():
                             # Remplacer le message context par la vraie réponse LLM
                             session = self.sessions.get(session_id)
@@ -1364,7 +1865,7 @@ class DialogManager:
                 # Laisser le LLM générer sa propre réponse
                 try:
                     print("[DialogManager] ask_activities: Appel LLM pour reformuler la liste")
-                    assistant_text = self.llm.generate_chat(self.system_prompt, history)
+                    assistant_text = self.llm.generate_chat(system_prompt, history)
                     if assistant_text and assistant_text.strip():
                         # Remplacer le message context par la vraie réponse LLM
                         session = self.sessions.get(session_id)
@@ -1393,7 +1894,7 @@ class DialogManager:
                     self._append_message(session_id, "assistant", context_msg)
                     try:
                         print("[DialogManager] ask_activities (spécific): Appel LLM pour reformuler")
-                        assistant_text = self.llm.generate_chat(self.system_prompt, history)
+                        assistant_text = self.llm.generate_chat(system_prompt, history)
                         if assistant_text and assistant_text.strip():
                             # Remplacer le message context par la vraie réponse LLM
                             session = self.sessions.get(session_id)
@@ -1423,6 +1924,13 @@ class DialogManager:
                     text = "Désolé, je n'ai pas trouvé d'informations sur l'activité {}.".format(activity)
                     self._append_message(session_id, "assistant", text)
                     return text, actions
+
+
+        elif intent == "ask_registered_activity_schedule":
+            return self._handle_registered_activity_schedule(session_id, user_name, user_role)
+
+        elif intent == "ask_special_events":
+            return self._handle_special_events(session_id, history, lang=lang)
 
         elif intent == "ask_available_slots":
             # L'utilisateur demande les créneaux disponibles
@@ -1607,7 +2115,7 @@ class DialogManager:
                     try:
                         # Laisser le LLM générer une réponse naturelle
                         print("[DialogManager] ask_my_reservations: Calling LLM to format reservations")
-                        assistant_text = self.llm.generate_chat(self.system_prompt, history)
+                        assistant_text = self.llm.generate_chat(system_prompt, history)
                         
                         if assistant_text and assistant_text.strip():
                             # Remplacer le message context par la réponse du LLM
@@ -1663,7 +2171,7 @@ class DialogManager:
             self._append_message(session_id, "assistant", context_msg)
             try:
                 print("[DialogManager] unknown intent: Calling LLM with helpful context")
-                assistant_text = self.llm.generate_chat(self.system_prompt, history)
+                assistant_text = self.llm.generate_chat(system_prompt, history)
                 if assistant_text and assistant_text.strip():
                     # Remplacer le message context par la vraie réponse LLM
                     session = self.sessions.get(session_id)
@@ -1685,10 +2193,10 @@ class DialogManager:
         # Try LLM generation
         try:
             print("[DialogManager] calling LLM with intent:", intent)
-            print("[DialogManager] System prompt length:", len(self.system_prompt))
+            print("[DialogManager] System prompt length:", len(system_prompt))
             print("[DialogManager] History length:", len(history))
 
-            assistant_text = self.llm.generate_chat(self.system_prompt, history)
+            assistant_text = self.llm.generate_chat(system_prompt, history)
             
             if not assistant_text or not assistant_text.strip():
                 print("[DialogManager] WARNING: LLM returned empty response, using fallback")
@@ -1700,7 +2208,7 @@ class DialogManager:
             return assistant_text, actions
         except LLMError as e:
             print("[DialogManager] LLMError:", e)
-            rule_val = RULES.get(intent)
+            rule_val = rules.get(intent)
             if rule_val:
                 if isinstance(rule_val, list):
                     tmpl = random.choice(rule_val)
@@ -1747,7 +2255,7 @@ if __name__ == "__main__":
     #   1. Call _append_message (User) -> updates _store
     #   2. Call LLMClient -> gets response
     #   3. Call _append_message (Assistant) -> updates _store
-    response, actions = dm.handle(sid, parse_1)
+    response, actions = dm.handle(sid, parse_1, lang="fr")
     
     print("Robot Response:", response)
     print("Updated History:", store.get(sid)["history"])
@@ -1757,7 +2265,7 @@ if __name__ == "__main__":
         "intent": "ask_activities",
         "raw_text": "Quelles sont les activités ?"
     }
-    dm.handle(sid, parse_2)
+    dm.handle(sid, parse_2, lang="fr")
     
     # Let's look at the SessionStore one last time
     final_state = store.get(sid)

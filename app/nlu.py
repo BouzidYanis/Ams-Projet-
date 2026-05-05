@@ -22,6 +22,7 @@ class NLU:
         "cancel_booking": "cancel_booking",
         "demander_horaire_activite_inscrite": "ask_registered_activity_schedule",
         "demander_evenements_speciaux": "ask_special_events",
+        "demander_evenement_special": "ask_special_events",
         # english
         "greeting": "greeting",
         "ask_hours": "ask_hours",
