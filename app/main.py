@@ -144,6 +144,7 @@ def root():
             "ASR": "/v1/asr",
             "Parse": "/v1/parse",
             "Respond": "/v1/respond",
+            "Navigation Map": "/carte_navigation.html",
             "Satisfaction Survey": "/satisfaction.html",
             "Reservation": "/reservation.html",
             "WebSocket": "/ws/reservation/{session_id}"
@@ -174,6 +175,20 @@ async def get_satisfaction_page():
     
     try:
         with open(satisfaction_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        return HTMLResponse(content=content)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/carte_navigation.html")
+async def get_navigation_map_page():
+    """Retourne la page HTML de la carte de navigation"""
+    carte_path = os.path.join(os.path.dirname(__file__), "..", "carte_navigation.html")
+    if not os.path.exists(carte_path):
+        raise HTTPException(status_code=404, detail="carte_navigation.html not found")
+    
+    try:
+        with open(carte_path, "r", encoding="utf-8") as f:
             content = f.read()
         return HTMLResponse(content=content)
     except Exception as e:
