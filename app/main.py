@@ -247,6 +247,7 @@ def parse_all_intents(req: ParseRequest):
 @app.post("/v1/respond", response_model=RespondResponse)
 async def respond(req: RespondRequest):
     print(f"\n[RESPOND] Nouvelle requête de dialogue")
+    print(f"[RESPOND] Données reçues: {req.dict()}")
     print(f"[RESPOND] Session ID recue: {req.session_id}")
     
     session_id = req.session_id or sessions.create_session()

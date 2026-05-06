@@ -27,17 +27,18 @@ SERVER_URL = "http://localhost:8001"
 # SERVER_URL = "http://10.60.55.34:8000"
 
 # Base URL pour les pages web (tablette)
-WEB_BASE_URL = "http://10.126.5.245:5500/"  # Ou "http://localhost:8000/" pour test
+WEB_BASE_URL = "http://10.26.1.75:8001/"  # Ou "http://localhost:8000/" pour test
 
 # URLs des pages web
 WEB_NAVIGATION_URL = WEB_BASE_URL + "carte_navigation.html"
 WEB_RESERVATION_URL = WEB_BASE_URL + "reservation.html"
+WEB_SATISFACTION_URL = WEB_BASE_URL + "satisfaction.html"
 # Shortcut pour compatibilité
 WEB_URL = WEB_BASE_URL #C'est quoi ça Yanis ?
 
 # 2. AUDIO SOURCE CONFIG
-MODE = "phone"  # Options: "phone" or "pepper"
-#MODE = "pepper"  # Options: "phone" or "pepper"
+# MODE = "phone"  # Options: "phone" or "pepper"
+MODE = "pepper"  # Options: "phone" or "pepper"
 
 PHONE_URL = "http://10.126.3.205:8080/audio.wav"
 #PHONE_URL = "http://10.60.55.196:8080/audio.wav"
@@ -99,7 +100,7 @@ class PepperAppMain():
             self.connector = PepperConnector(PEPPER_IP, PEPPER_PORT)
             if self.connector.connect():
                self.pepper_spec = PepperAudioCapture(self.connector.get_session())
-               self.connector.say("Application demarrée - Vous pouvez parlez")
+               self.connector.robot_say("Application demarrée - Vous pouvez parlez")
             pass
             
         self.audio_inputs = AudioInputs(mode=MODE, pepper_specialist=self.pepper_spec, phone_url=PHONE_URL)
@@ -121,6 +122,10 @@ class PepperAppMain():
     
         # Info utilisateur (ex: après reconnaissance faciale)
         self.current_user = None
+        
+        # Gestion du formulaire de satisfaction
+        self.satisfaction_form_displayed = False
+        self.satisfaction_form_timeout = None
 
     def start(self):
         """Démarre le moteur ASR et la boucle de contrôle principale."""
@@ -183,6 +188,14 @@ class PepperAppMain():
             self.last_interaction = time.time()
             self._log_state("HANDOVER") # Optionnel: pour voir quand Pepper repasse en mode attente
 
+        # --- ÉTAPE 3.5 : GESTION DU FORMULAIRE DE SATISFACTION ---
+        # Si un formulaire est affiché et le timeout est dépassé, revenir en veille
+        if self.satisfaction_form_displayed and self.satisfaction_form_timeout:
+            if time.time() - self.satisfaction_form_timeout > 60:  # 60 secondes
+                print(u"[MAIN] Formulaire inactif (1 min). Retour en veille.".encode('utf-8'))
+                self._close_satisfaction_form()
+                self._go_to_sleep()
+
         # --- ÉTAPE 3 : GESTION DU TIMEOUT (Si Arm C ne détecte rien) ---
         if self.asr.is_engaged and self.asr.check_if_silent:
             # Si Arm C n'a pas encore détecté de bruit (check_if_silent est tjs True)
@@ -231,9 +244,15 @@ class PepperAppMain():
                 
                 if self.tablet:
                     self.tablet.hidePage()
+                
+                # Afficher le formulaire de satisfaction après la réponse
+                self._show_satisfaction_form()
             else:
                 # Simulation uniquement pour le mode phone
                 time.sleep(len(answer) * 0.05)
+                
+                # Afficher le formulaire de satisfaction en mode test aussi
+                self._show_satisfaction_form()
     
     def _go_to_sleep(self):
         """Réinitialise l'état en veille."""
@@ -243,6 +262,51 @@ class PepperAppMain():
         self.asr.check_if_silent = False
         self.asr.last_transcript = ""
         self.session_id = None
+        
+        # Fermer le formulaire de satisfaction s'il est ouvert
+        self._close_satisfaction_form()
+    
+    def _show_satisfaction_form(self):
+        """Affiche le formulaire de satisfaction et attend 1 minute avant fermeture automatique."""
+        if not self.session_id:
+            print(u"[SATISFACTION] Pas de session ID, impossible d'afficher le formulaire.".encode('utf-8'))
+            return
+        
+        # Construire l'URL avec la session ID
+        satisfaction_url = "{}?session_id={}".format(WEB_SATISFACTION_URL, self.session_id)
+        
+        print(u"[SATISFACTION] Affichage du formulaire...".encode('utf-8'))
+        self.satisfaction_form_displayed = True
+        self.satisfaction_form_timeout = time.time()
+        
+        # Afficher le formulaire sur la tablette
+        if MODE == "pepper":
+            try:
+                self.connector.robot_show_url(satisfaction_url)
+                print(u"[SATISFACTION] Formulaire affiché: {}".format(satisfaction_url).encode('utf-8'))
+            except Exception as e:
+                print(u"[SATISFACTION] Erreur affichage du formulaire: {}".format(str(e)).encode('utf-8'))
+        else:
+            print(u"[SATISFACTION] URL du formulaire: {}".format(satisfaction_url).encode('utf-8'))
+        
+        if MODE == "pepper":
+            self.connector.robot_say(u"Merci pour cette conversation. Pouvez-vous compléter le questionnaire sur la tablette ? Vous avez une minute.".encode('utf-8'))
+    
+    def _close_satisfaction_form(self):
+        """Ferme le formulaire de satisfaction."""
+        if self.satisfaction_form_displayed:
+            print(u"[SATISFACTION] Fermeture du formulaire.".encode('utf-8'))
+            self.satisfaction_form_displayed = False
+            self.satisfaction_form_timeout = None
+            
+            # Masquer la page sur la tablette
+            if MODE == "pepper":
+                try:
+                    if hasattr(self, 'tablet') and self.tablet:
+                        self.tablet.hidePage()
+                    print(u"[SATISFACTION] Formulaire fermé.".encode('utf-8'))
+                except Exception as e:
+                    print(u"[SATISFACTION] Erreur fermeture: {}".format(str(e)).encode('utf-8'))
     
     def _log_state(self, event_name="HEARTBEAT", user_text="", pepper_answer="", log_file=LOG_FILE):
         # Setup widths - Time compressed, Committed added
