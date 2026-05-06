@@ -402,6 +402,46 @@ def cancel_reservation_endpoint(reservation_id: str, user_name: Optional[str] = 
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/nlu-metadata")
+def get_nlu_metadata():
+    """
+    Récupère les intentions disponibles avec leurs descriptions
+    et les types d'entités possibles pour le formulaire de satisfaction
+    """
+    try:
+        # Charger les intentions depuis intents.json
+        intents_path = os.path.join(os.path.dirname(__file__), "..", "configs", "intents.json")
+        intents_list = []
+        
+        if os.path.exists(intents_path):
+            with open(intents_path, "r", encoding="utf-8") as f:
+                intents_data = json.load(f)
+                for intent_key, intent_info in intents_data.items():
+                    description = intent_info.get("description", intent_key)
+                    intents_list.append({
+                        "value": intent_key.strip() or "greeting",
+                        "label": description.capitalize()
+                    })
+        
+        # Types d'entités disponibles
+        entity_types = [
+            {"value": "sports", "label": "Sport"},
+            {"value": "lieux", "label": "Lieu"},
+            {"value": "temps", "label": "Temps"},
+            {"value": "nombres", "label": "Nombre"},
+            {"value": "personne", "label": "Personne"},
+            {"value": "organisation", "label": "Organisation"}
+        ]
+        
+        return {
+            "intents": intents_list,
+            "entity_types": entity_types
+        }
+    except Exception as e:
+        print(f"[ERROR] Erreur retrieval NLU metadata: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/v1/survey/submit")
 def submit_survey(req: SurveySubmitRequest):
     """
@@ -469,7 +509,12 @@ def get_session_history(session_id: str):
     try:
         session_data = sessions.get(session_id)
         if not session_data:
-            raise HTTPException(status_code=404, detail="session not found")
+            # Retourner une liste vide au lieu de 404
+            return {
+                "session_id": session_id,
+                "history": [],
+                "turn_count": 0
+            }
         
         history = session_data.get("history", [])
         
@@ -501,7 +546,12 @@ def get_session_nlu_data(session_id: str):
     try:
         session_data = sessions.get(session_id)
         if not session_data:
-            raise HTTPException(status_code=404, detail="session not found")
+            # Retourner une liste vide au lieu de 404
+            return {
+                "session_id": session_id,
+                "nlu_items": [],
+                "total_items": 0
+            }
         
         history = session_data.get("history", [])
         nlu_items = session_data.get("nlu_log", [])  # Log NLU stocké dans la session

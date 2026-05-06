@@ -195,6 +195,61 @@
             font-size: 0.9em;
         }
 
+        .nlu-field select {
+            padding: 4px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        .entity-container {
+            background: #fff;
+            border: 1px dashed #667eea;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 8px;
+        }
+
+        .entity-item {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 8px;
+            margin-bottom: 8px;
+            padding: 8px;
+            background: #f9f9f9;
+            border-radius: 4px;
+            align-items: center;
+        }
+
+        .entity-item button {
+            padding: 4px 8px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85em;
+        }
+
+        .entity-item button:hover {
+            background: #c82333;
+        }
+
+        .add-entity-btn {
+            background: #667eea;
+            color: white;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+
+        .add-entity-btn:hover {
+            background: #5568d3;
+        }
+
         .original-text {
             background: #fafafa;
             padding: 8px;
@@ -599,10 +654,22 @@
     </div>
 
     <script>
+        // Get parameter from URL (compatible with robot)
+        function getParam(name) {
+            var query = window.location.search.substring(1);
+            var pairs = query.split("&");
+            for (var i = 0; i < pairs.length; i++) {
+                var pair = pairs[i].split("=");
+                if (decodeURIComponent(pair[0]) === name) {
+                    return decodeURIComponent(pair[1] || "");
+                }
+            }
+            return null;
+        }
+
         // Get session ID from URL or localStorage
         function getSessionId() {
-            const params = new URLSearchParams(window.location.search);
-            return params.get('session_id') || localStorage.getItem('session_id') || null;
+            return getParam('session_id') || localStorage.getItem('session_id') || null;
         }
 
         // Initialize form
@@ -661,6 +728,16 @@
         // Load NLU verification data
         async function loadNLUData(sessionId) {
             try {
+                // Charger les métadonnées (intentions et types d'entités)
+                const metadataResponse = await fetch(`/api/nlu-metadata`);
+                if (!metadataResponse.ok) {
+                    console.warn("Impossible de charger les métadonnées NLU");
+                }
+                const metadataData = await metadataResponse.json();
+                const intentsList = metadataData.intents || [];
+                const entityTypesList = metadataData.entity_types || [];
+
+                // Charger les données NLU de la session
                 const response = await fetch(`/api/session/${sessionId}/nlu-data`);
                 if (!response.ok) {
                     console.warn("Impossible de charger les données NLU");
@@ -681,6 +758,19 @@
                 let nluHTML = '';
                 nluItems.forEach((item, index) => {
                     const uniqueId = `nlu_${index}`;
+                    
+                    // Créer les options pour les intentions
+                    let intentOptions = '<option value="">-- Sélectionner une intention --</option>';
+                    intentsList.forEach(intent => {
+                        intentOptions += `<option value="${escapeHtml(intent.value)}">${escapeHtml(intent.label)}</option>`;
+                    });
+
+                    // Créer les options pour les types d'entités
+                    let entityTypeOptions = '<option value="">-- Type d\'entité --</option>';
+                    entityTypesList.forEach(entityType => {
+                        entityTypeOptions += `<option value="${escapeHtml(entityType.value)}">${escapeHtml(entityType.label)}</option>`;
+                    });
+
                     nluHTML += `
                         <div class="nlu-item">
                             <div class="nlu-header">Énoncé ${index + 1}</div>
@@ -692,16 +782,15 @@
                                 </div>
                                 <div>
                                     <label>Intention corrigée:</label>
-                                    <input type="text" id="${uniqueId}_corrected_intent" name="${uniqueId}_corrected_intent" 
-                                           placeholder="Laisser vide si correct" value="">
+                                    <select id="${uniqueId}_corrected_intent" name="${uniqueId}_corrected_intent">
+                                        ${intentOptions}
+                                    </select>
                                 </div>
                             </div>
-                            <div class="nlu-field">
-                                <div style="grid-column: 1 / -1;">
-                                    <label>Entités corrigées (JSON optionnel):</label>
-                                    <input type="text" id="${uniqueId}_corrected_entities" name="${uniqueId}_corrected_entities"
-                                           placeholder='{"entity_type": "value"}' value="">
-                                </div>
+                            <div style="margin-top: 12px;">
+                                <label><strong>Entités:</strong></label>
+                                <div class="entity-container" id="${uniqueId}_entities_container"></div>
+                                <button type="button" class="add-entity-btn" onclick="addEntityField('${uniqueId}', ${JSON.stringify(entityTypesList).replace(/'/g, "\\'")})">+ Ajouter une entité</button>
                             </div>
                             <input type="hidden" name="${uniqueId}_original_text" value="${escapeHtml(item.original_text)}">
                             <input type="hidden" name="${uniqueId}_predicted_intent" value="${escapeHtml(item.predicted_intent)}">
@@ -710,10 +799,42 @@
                 });
 
                 document.getElementById('nluSection').innerHTML = nluHTML;
+                window.entityTypesList = entityTypesList; // Stocker globalement pour addEntityField
             } catch (error) {
                 console.error("Erreur loading NLU data:", error);
                 document.getElementById('nluSection').innerHTML = 
                     '<p style="color: #999;">Erreur lors du chargement</p>';
+            }
+        }
+
+        // Ajouter un champ d'entité dynamiquement
+        function addEntityField(uniqueId, entityTypes) {
+            const container = document.getElementById(`${uniqueId}_entities_container`);
+            const entityId = `${uniqueId}_entity_${Date.now()}`;
+            
+            let typeOptions = '<option value="">-- Type d\'entité --</option>';
+            entityTypes.forEach(et => {
+                typeOptions += `<option value="${et.value}">${et.label}</option>`;
+            });
+
+            const entityHTML = `
+                <div class="entity-item" id="${entityId}">
+                    <select name="${entityId}_type" class="entity-type">
+                        ${typeOptions}
+                    </select>
+                    <input type="text" name="${entityId}_value" placeholder="Valeur de l'entité" class="entity-value" />
+                    <button type="button" onclick="removeEntityField('${entityId}')">✕ Supprimer</button>
+                </div>
+            `;
+
+            container.insertAdjacentHTML('beforeend', entityHTML);
+        }
+
+        // Supprimer un champ d'entité
+        function removeEntityField(entityId) {
+            const element = document.getElementById(entityId);
+            if (element) {
+                element.remove();
             }
         }
 
@@ -762,29 +883,36 @@
             nluItems.forEach((item, index) => {
                 const uniqueId = `nlu_${index}`;
                 const correctedIntent = document.getElementById(`${uniqueId}_corrected_intent`)?.value || '';
-                const correctedEntitiesStr = document.getElementById(`${uniqueId}_corrected_entities`)?.value || '{}';
                 const originalText = document.querySelector(`input[name="${uniqueId}_original_text"]`)?.value || '';
                 const predictedIntent = document.querySelector(`input[name="${uniqueId}_predicted_intent"]`)?.value || '';
 
-                // Only add if there are corrections
-                if (correctedIntent.trim() || correctedEntitiesStr.trim() !== '{}') {
-                    try {
-                        const correctedEntities = JSON.parse(correctedEntitiesStr);
-                        corrections.push({
-                            original_text: originalText,
-                            predicted_intent: predictedIntent,
-                            corrected_intent: correctedIntent || predictedIntent,
-                            corrected_entities: correctedEntities
-                        });
-                    } catch (e) {
-                        console.warn(`Invalid JSON for entities at index ${index}`, e);
-                        corrections.push({
-                            original_text: originalText,
-                            predicted_intent: predictedIntent,
-                            corrected_intent: correctedIntent || predictedIntent,
-                            corrected_entities: {}
-                        });
+                // Collecter les entités dynamiques
+                const correctedEntities = {};
+                const entityItems = item.querySelectorAll('.entity-item');
+                entityItems.forEach(entityItem => {
+                    const typeInput = entityItem.querySelector('.entity-type');
+                    const valueInput = entityItem.querySelector('.entity-value');
+                    
+                    if (typeInput && valueInput && typeInput.value && valueInput.value) {
+                        const entityType = typeInput.value;
+                        const entityValue = valueInput.value;
+                        
+                        // Créer une clé unique pour l'entité
+                        if (!correctedEntities[entityType]) {
+                            correctedEntities[entityType] = [];
+                        }
+                        correctedEntities[entityType].push(entityValue);
                     }
+                });
+
+                // Ajouter correction seulement si intention modifiée ou entités présentes
+                if (correctedIntent || Object.keys(correctedEntities).length > 0) {
+                    corrections.push({
+                        original_text: originalText,
+                        predicted_intent: predictedIntent,
+                        corrected_intent: correctedIntent || predictedIntent,
+                        corrected_entities: correctedEntities
+                    });
                 }
             });
 

@@ -420,12 +420,24 @@
     </div>
 
     <script>
+        // Get parameter from URL (compatible with robot)
+        function getParam(name) {
+            var query = window.location.search.substring(1);
+            var pairs = query.split("&");
+            for (var i = 0; i < pairs.length; i++) {
+                var pair = pairs[i].split("=");
+                if (decodeURIComponent(pair[0]) === name) {
+                    return decodeURIComponent(pair[1] || "");
+                }
+            }
+            return null;
+        }
+
         // Récupérer les paramètres de l'URL
-        const urlParams = new URLSearchParams(window.location.search);
-        const SESSION_ID = urlParams.get('session_id') || 'default_session';
+        const SESSION_ID = getParam('session_id') || 'default_session';
         
         // Extraire le hostname à partir du serveur_ip (accepte http://localhost:8001 ou localhost)
-        let serverIpParam = urlParams.get('server_ip') || window.location.hostname;
+        let serverIpParam = getParam('server_ip') || window.location.hostname;
         const SERVER_IP = serverIpParam.replace(/^https?:\/\//, '').split(':')[0];
         const BACKEND_URL = window.location.protocol + '//' + SERVER_IP + ':8001';
         
