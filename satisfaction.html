@@ -736,6 +736,9 @@
                 const metadataData = await metadataResponse.json();
                 const intentsList = metadataData.intents || [];
                 const entityTypesList = metadataData.entity_types || [];
+                
+                // Stocker les types d'entités globalement
+                window.entityTypesList = entityTypesList;
 
                 // Charger les données NLU de la session
                 const response = await fetch(`/api/session/${sessionId}/nlu-data`);
@@ -790,7 +793,7 @@
                             <div style="margin-top: 12px;">
                                 <label><strong>Entités:</strong></label>
                                 <div class="entity-container" id="${uniqueId}_entities_container"></div>
-                                <button type="button" class="add-entity-btn" onclick="addEntityField('${uniqueId}', ${JSON.stringify(entityTypesList).replace(/'/g, "\\'")})">+ Ajouter une entité</button>
+                                <button type="button" class="add-entity-btn" onclick="addEntityField('${uniqueId}')">+ Ajouter une entité</button>
                             </div>
                             <input type="hidden" name="${uniqueId}_original_text" value="${escapeHtml(item.original_text)}">
                             <input type="hidden" name="${uniqueId}_predicted_intent" value="${escapeHtml(item.predicted_intent)}">
@@ -799,7 +802,6 @@
                 });
 
                 document.getElementById('nluSection').innerHTML = nluHTML;
-                window.entityTypesList = entityTypesList; // Stocker globalement pour addEntityField
             } catch (error) {
                 console.error("Erreur loading NLU data:", error);
                 document.getElementById('nluSection').innerHTML = 
@@ -808,14 +810,16 @@
         }
 
         // Ajouter un champ d'entité dynamiquement
-        function addEntityField(uniqueId, entityTypes) {
+        function addEntityField(uniqueId) {
             const container = document.getElementById(`${uniqueId}_entities_container`);
             const entityId = `${uniqueId}_entity_${Date.now()}`;
             
             let typeOptions = '<option value="">-- Type d\'entité --</option>';
-            entityTypes.forEach(et => {
-                typeOptions += `<option value="${et.value}">${et.label}</option>`;
-            });
+            if (window.entityTypesList && Array.isArray(window.entityTypesList)) {
+                window.entityTypesList.forEach(et => {
+                    typeOptions += `<option value="${et.value}">${et.label}</option>`;
+                });
+            }
 
             const entityHTML = `
                 <div class="entity-item" id="${entityId}">

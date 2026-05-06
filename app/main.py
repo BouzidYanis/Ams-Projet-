@@ -409,28 +409,43 @@ def get_nlu_metadata():
     et les types d'entités possibles pour le formulaire de satisfaction
     """
     try:
-        # Charger les intentions depuis intents.json
-        intents_path = os.path.join(os.path.dirname(__file__), "..", "configs", "intents.json")
+        # Récupérer les intentions depuis NLU
+        intent_map = nlu._INTENT_MAP
+        # Extraire les valeurs uniques (les intentions API)
+        api_intents = sorted(set(intent_map.values()))
+        
+        # Mapping des intentions vers leurs descriptions
+        intent_descriptions = {
+            "greeting": "Saluer le robot",
+            "ask_hours": "Demander les horaires",
+            "ask_activities": "Demander les activités",
+            "navigate": "Demander la navigation",
+            "book_activity": "Réserver une activité",
+            "who_are_you": "Qui es-tu?",
+            "ask_available_slots": "Demander les créneaux disponibles",
+            "ask_my_reservations": "Demander mes réservations",
+            "ask_pricing": "Demander les tarifs",
+            "cancel_booking": "Annuler une réservation",
+            "ask_registered_activity_schedule": "Demander l'horaire de mon activité",
+            "ask_special_events": "Demander les événements spéciaux",
+            "unknown": "Intention inconnue"
+        }
+        
         intents_list = []
+        for intent in api_intents:
+            description = intent_descriptions.get(intent, intent.replace("_", " ").capitalize())
+            intents_list.append({
+                "value": intent,
+                "label": description
+            })
         
-        if os.path.exists(intents_path):
-            with open(intents_path, "r", encoding="utf-8") as f:
-                intents_data = json.load(f)
-                for intent_key, intent_info in intents_data.items():
-                    description = intent_info.get("description", intent_key)
-                    intents_list.append({
-                        "value": intent_key.strip() or "greeting",
-                        "label": description.capitalize()
-                    })
-        
-        # Types d'entités disponibles
+        # Types d'entités correctes
         entity_types = [
-            {"value": "sports", "label": "Sport"},
-            {"value": "lieux", "label": "Lieu"},
-            {"value": "temps", "label": "Temps"},
-            {"value": "nombres", "label": "Nombre"},
-            {"value": "personne", "label": "Personne"},
-            {"value": "organisation", "label": "Organisation"}
+            {"value": "SPORT", "label": "Sport"},
+            {"value": "LIEU", "label": "Lieu"},
+            {"value": "DATE", "label": "Date"},
+            {"value": "HEURE", "label": "Heure"},
+            {"value": "NOMBRE", "label": "Nombre"}
         ]
         
         return {
