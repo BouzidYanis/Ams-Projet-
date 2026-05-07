@@ -8,6 +8,7 @@ from typing import Optional, Dict, Any, Set
 import uvicorn
 import shutil
 import os
+import signal
 import json
 from datetime import datetime
 
@@ -644,6 +645,14 @@ async def websocket_reservation(websocket: WebSocket, session_id: str):
     except Exception as e:
         print(f"[WS] Erreur: {e}")
         manager.disconnect(session_id, websocket)
+
+
+@app.post("/admin/shutdown")
+@app.get("/admin/shutdown")
+def shutdown():
+    """Force kill the server process — use when Ctrl+C is stuck."""
+    print("[ADMIN] Shutdown forcé via /admin/shutdown")
+    os.kill(os.getpid(), signal.SIGKILL)
 
 
 if __name__ == "__main__":
