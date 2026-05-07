@@ -648,7 +648,7 @@ class DialogManager:
                 event_copy["source_collection"] = collection_name
                 event_copy["resolved_title"] = title
                 if event_dt:
-                    event_copy["resolved_date"] = event_dt.isoformat()
+                    event_copy["resolved_date"] = event_dt.strftime("%Y-%m-%d")
                 if status:
                     event_copy["resolved_status"] = status
                 collected.append(event_copy)

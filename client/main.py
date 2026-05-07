@@ -44,7 +44,7 @@ PHONE_URL = "http://10.126.3.205:8080/audio.wav"
 #PHONE_URL = "http://10.60.55.196:8080/audio.wav"
 
 # 3. ROBOT HARDWARE CONFIG
-PEPPER_IP = "192.168.13.202"
+PEPPER_IP = "192.168.13.203"
 # PEPPER_IP = "10.120.16.92"
 # PEPPER_IP = "127.0.0.1" # For local simulation (Choregraphe)
 PEPPER_PORT = 9559
@@ -491,16 +491,17 @@ class PepperAppMain():
                 print("[ACTION] Page de reservation affichee: {}".format(reservation_url))
 
         elif action_type == "navigate":
-            # Instructions de navigation
+            destination_key = actions.get("destination_key", "")
             destination = actions.get("destination", "")
-            instructions = actions.get("instructions", "")
-
-            if self.nav and destination:
+            if destination_key or destination:
+                nav_url = "{}?destination={}&session_id={}".format(
+                    WEB_NAVIGATION_URL,
+                    destination_key or destination,
+                    self.session_id or ""
+                )
                 try:
-                    # Afficher la carte sur la tablette
-                    self.nav.afficher_carte(destination)
-                    print("[ACTION] Carte affichee pour: {}".format(
-                        destination.encode("utf-8") if isinstance(destination, unicode) else destination))
+                    self.connector.robot_show_url(nav_url)
+                    print("[ACTION] Carte affichee: {}".format(nav_url))
                 except Exception as e:
                     print("[ACTION] Erreur affichage carte: {}".format(e))
 
