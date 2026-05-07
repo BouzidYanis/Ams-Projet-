@@ -74,11 +74,38 @@ def build_training_data() -> list[tuple[str, dict]]:
         "terrain de basket disponible demain",
     ]
 
+    # Sports supplémentaires
+    samples_sport += [
+        "je voudrais faire de la boxe",
+        "cours de boxe disponibles",
+        "inscription au spinning",
+        "réserver une séance de spinning",
+        "horaires du crossfit",
+        "je veux m'inscrire au crossfit",
+        "un cours de handball ce soir",
+        "terrain de handball disponible",
+        "match de volleyball organisé",
+        "cours de volleyball pour débutants",
+        "séance de judo lundi matin",
+        "je pratique le judo",
+        "activité d'escalade disponible",
+        "cours d'escalade ce week-end",
+        "natation synchronisée horaires",
+        "inscription natation synchronisée",
+        "cours de tennis de table",
+        "réserver une table pour le ping pong",
+        "je veux faire du vélo en salle",
+        "séance de vélo elliptique",
+    ]
+
     for text in samples_sport:
         ents = []
-        for sport in ["natation", "yoga", "fitness", "tennis", "badminton",
+        for sport in ["natation synchronisée", "tennis de table",
+                      "natation", "yoga", "fitness", "tennis", "badminton",
                       "musculation", "pilates", "zumba", "aquagym", "cardio",
-                      "stretching", "danse", "squash", "jogging", "running", "basket"]:
+                      "stretching", "danse", "squash", "jogging", "running", "basket",
+                      "boxe", "spinning", "crossfit", "handball", "volleyball",
+                      "judo", "escalade", "ping pong"]:
             if sport in text:
                 ents.append(e(text, sport, "SPORT"))
         if ents:
@@ -86,30 +113,50 @@ def build_training_data() -> list[tuple[str, dict]]:
 
     # ── LIEU ──────────────────────────────────────────────────────
     samples_lieu = [
-        ("où sont les vestiaires",                  [e("où sont les vestiaires",                  "vestiaires",   "LIEU")]),
-        ("je cherche les vestiaires hommes",         [e("je cherche les vestiaires hommes",         "vestiaires",   "LIEU")]),
-        ("direction salle A s'il vous plaît",        [e("direction salle A s'il vous plaît",        "salle A",      "LIEU")]),
-        ("je suis en salle A",                       [e("je suis en salle A",                       "salle A",      "LIEU")]),
-        ("cours dans la salle B aujourd'hui",        [e("cours dans la salle B aujourd'hui",        "salle B",      "LIEU")]),
-        ("réserver la salle B pour demain",          [e("réserver la salle B pour demain",          "salle B",      "LIEU")]),
-        ("la salle C est fermée",                    [e("la salle C est fermée",                    "salle C",      "LIEU")]),
-        ("je cherche la salle D",                    [e("je cherche la salle D",                    "salle D",      "LIEU")]),
-        ("comment aller à la piscine",               [e("comment aller à la piscine",               "piscine",      "LIEU")]),
-        ("horaires de la piscine",                   [e("horaires de la piscine",                   "piscine",      "LIEU")]),
-        ("où se trouve l'accueil",                   [e("où se trouve l'accueil",                   "accueil",      "LIEU")]),
-        ("rendez-vous à l'accueil",                  [e("rendez-vous à l'accueil",                  "accueil",      "LIEU")]),
-        ("les toilettes sont où",                    [e("les toilettes sont où",                    "toilettes",    "LIEU")]),
-        ("je cherche les toilettes",                 [e("je cherche les toilettes",                 "toilettes",    "LIEU")]),
-        ("où sont les casiers",                      [e("où sont les casiers",                      "casiers",      "LIEU")]),
-        ("je n'ai pas de casier",                    [e("je n'ai pas de casier",                    "casier",       "LIEU")]),
-        ("direction secrétariat",                    [e("direction secrétariat",                    "secrétariat",  "LIEU")]),
-        ("je dois passer au secrétariat",            [e("je dois passer au secrétariat",            "secrétariat",  "LIEU")]),
-        ("où est le bassin de natation",             [e("où est le bassin de natation",             "bassin",       "LIEU")]),
-        ("court de tennis numéro 2",                 [e("court de tennis numéro 2",                 "court",        "LIEU")]),
-        ("réserver le terrain de basket",            [e("réserver le terrain de basket",            "terrain",      "LIEU")]),
-        ("salle de fitness fermée ce soir",          [e("salle de fitness fermée ce soir",          "salle de fitness", "LIEU")]),
-        ("où est la salle 3",                        [e("où est la salle 3",                        "salle 3",      "LIEU")]),
-        ("réserver la salle 2 pour lundi",           [e("réserver la salle 2 pour lundi",           "salle 2",      "LIEU")]),
+        ("où sont les vestiaires",                      [e("où sont les vestiaires",                      "vestiaires",       "LIEU")]),
+        ("je cherche les vestiaires hommes",             [e("je cherche les vestiaires hommes",             "vestiaires",       "LIEU")]),
+        ("direction salle A s'il vous plaît",            [e("direction salle A s'il vous plaît",            "salle A",          "LIEU")]),
+        ("je suis en salle A",                           [e("je suis en salle A",                           "salle A",          "LIEU")]),
+        ("je veux aller à la salle A",                   [e("je veux aller à la salle A",                   "salle A",          "LIEU")]),
+        ("je souhaite aller à la salle A",               [e("je souhaite aller à la salle A",               "salle A",          "LIEU")]),
+        ("conduis-moi vers la salle A",                  [e("conduis-moi vers la salle A",                  "salle A",          "LIEU")]),
+        ("cours dans la salle B aujourd'hui",            [e("cours dans la salle B aujourd'hui",            "salle B",          "LIEU")]),
+        ("réserver la salle B pour demain",              [e("réserver la salle B pour demain",              "salle B",          "LIEU")]),
+        ("comment aller à la salle B",                   [e("comment aller à la salle B",                   "salle B",          "LIEU")]),
+        ("la salle C est fermée",                        [e("la salle C est fermée",                        "salle C",          "LIEU")]),
+        ("je cherche la salle D",                        [e("je cherche la salle D",                        "salle D",          "LIEU")]),
+        ("où est la salle E",                            [e("où est la salle E",                            "salle E",          "LIEU")]),
+        ("comment aller à la piscine",                   [e("comment aller à la piscine",                   "piscine",          "LIEU")]),
+        ("horaires de la piscine",                       [e("horaires de la piscine",                       "piscine",          "LIEU")]),
+        ("je veux aller à la piscine",                   [e("je veux aller à la piscine",                   "piscine",          "LIEU")]),
+        ("où se trouve l'accueil",                       [e("où se trouve l'accueil",                       "accueil",          "LIEU")]),
+        ("rendez-vous à l'accueil",                      [e("rendez-vous à l'accueil",                      "accueil",          "LIEU")]),
+        ("les toilettes sont où",                        [e("les toilettes sont où",                        "toilettes",        "LIEU")]),
+        ("je cherche les toilettes",                     [e("je cherche les toilettes",                     "toilettes",        "LIEU")]),
+        ("où sont les casiers",                          [e("où sont les casiers",                          "casiers",          "LIEU")]),
+        ("je n'ai pas de casier",                        [e("je n'ai pas de casier",                        "casier",           "LIEU")]),
+        ("direction secrétariat",                        [e("direction secrétariat",                        "secrétariat",      "LIEU")]),
+        ("je dois passer au secrétariat",                [e("je dois passer au secrétariat",                "secrétariat",      "LIEU")]),
+        ("où est le bassin de natation",                 [e("où est le bassin de natation",                 "bassin",           "LIEU")]),
+        ("je veux aller au bassin olympique",            [e("je veux aller au bassin olympique",            "bassin olympique",  "LIEU")]),
+        ("court de tennis numéro 2",                     [e("court de tennis numéro 2",                     "court",            "LIEU")]),
+        ("réserver le terrain de basket",                [e("réserver le terrain de basket",                "terrain",          "LIEU")]),
+        ("salle de fitness fermée ce soir",              [e("salle de fitness fermée ce soir",              "salle de fitness",  "LIEU")]),
+        ("où est la salle 3",                            [e("où est la salle 3",                            "salle 3",          "LIEU")]),
+        ("réserver la salle 2 pour lundi",               [e("réserver la salle 2 pour lundi",               "salle 2",          "LIEU")]),
+        ("où est le parking",                            [e("où est le parking",                            "parking",          "LIEU")]),
+        ("comment accéder au parking",                   [e("comment accéder au parking",                   "parking",          "LIEU")]),
+        ("je cherche le gymnase",                        [e("je cherche le gymnase",                        "gymnase",          "LIEU")]),
+        ("direction gymnase s'il vous plaît",            [e("direction gymnase s'il vous plaît",            "gymnase",          "LIEU")]),
+        ("où est le couloir principal",                  [e("où est le couloir principal",                  "couloir",          "LIEU")]),
+        ("je dois aller à l'entrée principale",          [e("je dois aller à l'entrée principale",          "entrée principale", "LIEU")]),
+        ("où se trouve la salle de yoga",                [e("où se trouve la salle de yoga",                "salle de yoga",    "LIEU")]),
+        ("direction salle de danse",                     [e("direction salle de danse",                     "salle de danse",   "LIEU")]),
+        ("accès au vestiaire femmes",                    [e("accès au vestiaire femmes",                    "vestiaire",        "LIEU")]),
+        ("où sont les douches",                          [e("où sont les douches",                          "douches",          "LIEU")]),
+        ("je cherche les douches",                       [e("je cherche les douches",                       "douches",          "LIEU")]),
+        ("je veux aller à la réception",                 [e("je veux aller à la réception",                 "réception",        "LIEU")]),
+        ("comment aller vers l'accueil",                 [e("comment aller vers l'accueil",                 "accueil",          "LIEU")]),
     ]
 
     for text, ents in samples_lieu:
@@ -296,6 +343,89 @@ def build_training_data() -> list[tuple[str, dict]]:
                 e("annuler natation vestiaires salle 2", "natation",    "SPORT"),
                 e("annuler natation vestiaires salle 2", "vestiaires",  "LIEU"),
                 e("annuler natation vestiaires salle 2", "salle 2",     "LIEU"),
+            ],
+        ),
+        (
+            "je veux aller à la salle A demain matin",
+            [
+                e("je veux aller à la salle A demain matin", "salle A", "LIEU"),
+                e("je veux aller à la salle A demain matin", "demain",  "DATE"),
+                e("je veux aller à la salle A demain matin", "matin",   "HEURE"),
+            ],
+        ),
+        (
+            "cours de boxe vendredi soir en salle C",
+            [
+                e("cours de boxe vendredi soir en salle C", "boxe",     "SPORT"),
+                e("cours de boxe vendredi soir en salle C", "vendredi", "DATE"),
+                e("cours de boxe vendredi soir en salle C", "soir",     "HEURE"),
+                e("cours de boxe vendredi soir en salle C", "salle C",  "LIEU"),
+            ],
+        ),
+        (
+            "handball demain à 15h gymnase",
+            [
+                e("handball demain à 15h gymnase", "handball", "SPORT"),
+                e("handball demain à 15h gymnase", "demain",   "DATE"),
+                e("handball demain à 15h gymnase", "15h",      "HEURE"),
+                e("handball demain à 15h gymnase", "gymnase",  "LIEU"),
+            ],
+        ),
+        (
+            "réserver spinning samedi matin 2 places",
+            [
+                e("réserver spinning samedi matin 2 places", "spinning", "SPORT"),
+                e("réserver spinning samedi matin 2 places", "samedi",   "DATE"),
+                e("réserver spinning samedi matin 2 places", "matin",    "HEURE"),
+                e("réserver spinning samedi matin 2 places", "2",        "NOMBRE"),
+            ],
+        ),
+        (
+            "yoga mercredi à 18h salle de yoga une place",
+            [
+                e("yoga mercredi à 18h salle de yoga une place", "yoga",         "SPORT"),
+                e("yoga mercredi à 18h salle de yoga une place", "mercredi",     "DATE"),
+                e("yoga mercredi à 18h salle de yoga une place", "18h",          "HEURE"),
+                e("yoga mercredi à 18h salle de yoga une place", "salle de yoga","LIEU"),
+                e("yoga mercredi à 18h salle de yoga une place", "une",          "NOMBRE"),
+            ],
+        ),
+        (
+            "judo jeudi après-midi salle A",
+            [
+                e("judo jeudi après-midi salle A", "judo",       "SPORT"),
+                e("judo jeudi après-midi salle A", "jeudi",      "DATE"),
+                e("judo jeudi après-midi salle A", "après-midi", "HEURE"),
+                e("judo jeudi après-midi salle A", "salle A",    "LIEU"),
+            ],
+        ),
+        (
+            "natation synchronisée ce soir à 20h bassin olympique",
+            [
+                e("natation synchronisée ce soir à 20h bassin olympique", "natation synchronisée", "SPORT"),
+                e("natation synchronisée ce soir à 20h bassin olympique", "ce soir",               "DATE"),
+                e("natation synchronisée ce soir à 20h bassin olympique", "20h",                   "HEURE"),
+                e("natation synchronisée ce soir à 20h bassin olympique", "bassin olympique",       "LIEU"),
+            ],
+        ),
+        (
+            "crossfit lundi 7h salle de fitness 3 personnes",
+            [
+                e("crossfit lundi 7h salle de fitness 3 personnes", "crossfit",        "SPORT"),
+                e("crossfit lundi 7h salle de fitness 3 personnes", "lundi",           "DATE"),
+                e("crossfit lundi 7h salle de fitness 3 personnes", "7h",              "HEURE"),
+                e("crossfit lundi 7h salle de fitness 3 personnes", "salle de fitness","LIEU"),
+                e("crossfit lundi 7h salle de fitness 3 personnes", "3",               "NOMBRE"),
+            ],
+        ),
+        (
+            "tennis de table samedi 10h salle B deux joueurs",
+            [
+                e("tennis de table samedi 10h salle B deux joueurs", "tennis de table", "SPORT"),
+                e("tennis de table samedi 10h salle B deux joueurs", "samedi",          "DATE"),
+                e("tennis de table samedi 10h salle B deux joueurs", "10h",             "HEURE"),
+                e("tennis de table samedi 10h salle B deux joueurs", "salle B",         "LIEU"),
+                e("tennis de table samedi 10h salle B deux joueurs", "deux",            "NOMBRE"),
             ],
         ),
     ]

@@ -1,0 +1,19 @@
+{
+  "labels":[
+    "salutation",
+    "demander_heure",
+    "demander_activite",
+    "ask_pricing",
+    "demander_lieu",
+    "reserver",
+    "qui",
+    "cancel_booking",
+    "ask_available_slots",
+    "demander_mes_reservations",
+    "demander_horaire_activite_inscrite",
+    "demander_evenements_speciaux",
+    "inconnu"
+  ],
+  "threshold":0.0,
+  "positive_label":null
+}
