@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
@@ -152,8 +152,8 @@ def root():
     }
 
 
-@app.get("/reservation.html")
-async def get_reservation_page():
+@app.api_route("/reservation.html", methods=["GET", "HEAD"])
+async def get_reservation_page(request: Request):
     """Retourne la page HTML de réservation"""
     reservation_path = os.path.join(os.path.dirname(__file__), "..", "reservation.html")
     if not os.path.exists(reservation_path):
@@ -166,8 +166,8 @@ async def get_reservation_page():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/satisfaction.html")
-async def get_satisfaction_page():
+@app.api_route("/satisfaction.html", methods=["GET", "HEAD"])
+async def get_satisfaction_page(request: Request):
     """Retourne la page HTML du questionnaire de satisfaction"""
     satisfaction_path = os.path.join(os.path.dirname(__file__), "..", "satisfaction.html")
     if not os.path.exists(satisfaction_path):
@@ -180,8 +180,8 @@ async def get_satisfaction_page():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/carte_navigation.html")
-async def get_navigation_map_page():
+@app.api_route("/carte_navigation.html", methods=["GET", "HEAD"])
+async def get_navigation_map_page(request: Request):
     """Retourne la page HTML de la carte de navigation"""
     carte_path = os.path.join(os.path.dirname(__file__), "..", "carte_navigation.html")
     if not os.path.exists(carte_path):

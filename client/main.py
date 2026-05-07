@@ -27,7 +27,7 @@ SERVER_URL = "http://localhost:8001"
 # SERVER_URL = "http://10.60.55.34:8000"
 
 # Base URL pour les pages web (tablette)
-WEB_BASE_URL = "http://10.26.7.76:8001/"  # Ou "http://localhost:8000/" pour test
+WEB_BASE_URL = "http://10.126.5.245:8001/"  # Ou "http://localhost:8000/" pour test
 
 # URLs des pages web
 WEB_NAVIGATION_URL = WEB_BASE_URL + "carte_navigation.html"
@@ -155,7 +155,7 @@ class PepperAppMain():
 
         # --- ÉTAPE 1 : RÉVEIL (Via Arm B) ---
         # PLUS VRAI Here, the activation is done directly in Arm B inside asr object
-        if self.asr.is_engaged and not self.asr.is_listening and not self.asr.check_if_silent:
+        if self.asr.is_engaged and not self.asr.is_listening and not self.asr.check_if_silent and not self.asr.committed_transcript.strip():
             print(u"[MAIN] **RÉVEIL** Activation de l'oreille (Arm D).".encode('utf-8'))
             
             self._log_state("WAKE_WORD")
@@ -268,14 +268,10 @@ class PepperAppMain():
                 if self.tablet:
                     self.tablet.hidePage()
                 
-                # Afficher le formulaire de satisfaction après la réponse
-                self._show_satisfaction_form()
             else:
                 # Simulation uniquement pour le mode phone
                 time.sleep(len(answer) * 0.05)
                 
-                # Afficher le formulaire de satisfaction en mode test aussi
-                self._show_satisfaction_form()
     
     def _go_to_sleep(self):
         """Réinitialise l'état en veille."""
@@ -285,9 +281,8 @@ class PepperAppMain():
         self.asr.check_if_silent = False
         self.asr.last_transcript = ""
         self.session_id = None
-        
-        # Fermer le formulaire de satisfaction s'il est ouvert
-        self._close_satisfaction_form()
+        # Afficher le formulaire de satisfaction après la réponse
+        self._show_satisfaction_form()
     
     def _show_satisfaction_form(self):
         """Affiche le formulaire de satisfaction et attend 1 minute avant fermeture automatique."""
@@ -316,7 +311,9 @@ class PepperAppMain():
             self.asr.is_speaking = True
             self.connector.robot_say(u"Merci pour cette conversation. Pouvez-vous compléter le questionnaire sur la tablette ? Vous avez une minute.".encode('utf-8'))
             self.asr.is_speaking = False
-    
+            # Fermer le formulaire de satisfaction s'il est ouvert
+            self._close_satisfaction_form()
+            
     def _close_satisfaction_form(self):
         """Ferme le formulaire de satisfaction."""
         if self.satisfaction_form_displayed:
