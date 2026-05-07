@@ -485,8 +485,8 @@ class PepperAppMain():
             print("[ACTION] Slot manquant: {}".format(missing))
             
             # Afficher la page de réservation avec session_id
-            if self.dialog_session_id:
-                reservation_url = "{}?session_id={}".format(WEB_RESERVATION_URL, self.dialog_session_id)
+            if self.session_id:
+                reservation_url = "{}?session_id={}".format(WEB_RESERVATION_URL, self.session_id)
                 self.connector.robot_show_url(reservation_url)
                 print("[ACTION] Page de reservation affichee: {}".format(reservation_url))
 
@@ -512,8 +512,8 @@ class PepperAppMain():
         elif action_type == "show_web_form":
             # Afficher un formulaire web avec synchronisation
             form_type = actions.get("form_type", "reservation")
-            if form_type == "reservation" and self.dialog_session_id:
-                reservation_url = "{}?session_id={}".format(WEB_RESERVATION_URL, self.dialog_session_id)
+            if form_type == "reservation" and self.session_id:
+                reservation_url = "{}?session_id={}".format(WEB_RESERVATION_URL, self.session_id)
                 self.connector.robot_show_url(reservation_url)
                 print("[ACTION] Formulaire web affiche: {}".format(reservation_url))
 

@@ -195,26 +195,33 @@ class ASREngine:
                         # 2. CAS A : Le batch est plein (ex: 5s) -> On transcrit
                         if len(batch) >= self.transcript_batch_size:
                             filename = "D_batch_{}s_{}.wav".format(self.transcript_batch_size, idx)
-                            
-                            # Only send to ASR if at least one chunk has speech
-                            has_speech = any(not self.audio.is_silent(f) for f in batch)
-                            if has_speech:
+
+                            # Require majority of chunks to have speech (not just one)
+                            speech_count = sum(1 for f in batch if not self.audio.is_silent(f))
+                            has_enough_speech = speech_count >= len(batch) / 2
+                            if has_enough_speech:
                                 merged = self.audio.merge_wavs(batch, filename)
                                 res = self.net.send_asr_file(merged)
                                 if res and res.get("text"):
-                                    active_transcript_list.append(res.get("text"))
-                            
+                                    text = res.get("text").strip()
+                                    if self._is_valid_transcript(text):
+                                        active_transcript_list.append(text)
+
                             batch = []
-                            
+
                         # 3. CAS B : Seuil de silence atteint -> On flush et on arrête
                         if consecutive_silence >= self.silence_delay:
-                            # S'il reste des morceaux dans le batch actuel, on les envoie
+                            # Only flush if the remaining batch has enough speech
                             if batch:
-                                filename = "D_flush_{}.wav".format(idx)
-                                merged = self.audio.merge_wavs(batch, filename)
-                                res = self.net.send_asr_file(merged)
-                                if res and res.get("text"):
-                                    active_transcript_list.append(res.get("text"))
+                                speech_count = sum(1 for f in batch if not self.audio.is_silent(f))
+                                if speech_count >= 1:
+                                    filename = "D_flush_{}.wav".format(idx)
+                                    merged = self.audio.merge_wavs(batch, filename)
+                                    res = self.net.send_asr_file(merged)
+                                    if res and res.get("text"):
+                                        text = res.get("text").strip()
+                                        if self._is_valid_transcript(text):
+                                            active_transcript_list.append(text)
                             
                             # On concatène tout et on envoie au Main
                             if active_transcript_list:
@@ -242,6 +249,20 @@ class ASREngine:
                 except: break
         print(u"[ASR] Stop & Queues vidées.".encode('utf-8'))
     
+    def _is_valid_transcript(self, text):
+        """Rejette les transcripts vides, trop courts ou composés majoritairement de ponctuation/points."""
+        if not text or len(text) < 3:
+            return False
+        # Compte les vrais caractères alphabétiques
+        alpha_count = sum(1 for c in text if c.isalpha())
+        if alpha_count < 3:
+            return False
+        # Si plus de la moitié du texte est fait de points/espaces/tirets, c'est du bruit
+        noise_count = sum(1 for c in text if c in u'. \t-_')
+        if noise_count > len(text) * 0.6:
+            return False
+        return True
+
     def _contains_wake_word(self, text):
         """Vérifie la présence d'un mot-clé dans la transcription."""
         if not text: return False

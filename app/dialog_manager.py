@@ -1790,43 +1790,85 @@ class DialogManager:
             self._append_message(session_id, "assistant", text)
             return text, {}
         
-        # --- Horaires du centre ---
+        # --- Horaires du centre ou d'une activité spécifique ---
         if intent in {"demander_heure", "ask_hours"}:
-            horaires = self._get_center_hours()
-            
-            # Construire le message avec les horaires
-            ouverture = horaires["ouverture_heure"]
-            fermeture = horaires["fermeture_heure"]
-            horaires_text = "Le centre est ouvert de {} à {}.".format(ouverture, fermeture)
-            
-            # Laisser le LLM reformuler les horaires
-            context_msg = "L'utilisateur demande les horaires d'ouverture du centre. Horaires: {}".format(horaires_text)
-            self._append_message(session_id, "assistant", context_msg)
-            
-            try:
-                print("[DialogManager] demander_heure: Appel LLM pour reformuler les horaires")
-                assistant_text = self.llm.generate_chat(system_prompt, history)
-                if assistant_text and assistant_text.strip():
-                    # Remplacer le message context par la vraie réponse LLM
-                    session = self.sessions.get(session_id)
-                    session["history"][-1] = {"role": "assistant", "content": assistant_text}
-                    self.sessions.update(session_id, session)
-                    actions = {
-                        "type": "provide_hours",
-                        "hours": horaires
-                    }
-                    return assistant_text, actions
-            except Exception as e:
-                print("[DialogManager] LLM error for hours:", e)
-            
-            # Fallback si LLM échoue
-            text = horaires_text
-            self._append_message(session_id, "assistant", text)
-            actions = {
-                "type": "provide_hours",
-                "hours": horaires
-            }
-            return text, actions
+            activities = entities.get("activity", [])
+            activite_name = activities[0] if activities else None
+
+            if activite_name:
+                # Recherche du planning de l'activité dans MongoDB
+                activite_name_norm = _normalize_activity_name(activite_name)
+                activite_doc = db.get_collection("activite").find_one(
+                    {"nom": {"$regex": "^{}$".format(activite_name_norm), "$options": "i"}}
+                )
+                if activite_doc:
+                    planning = activite_doc.get("planning", [])
+                    if planning:
+                        planning_lines = []
+                        for slot in planning:
+                            planning_lines.append("{} de {}  à {}".format(
+                                slot.get("jour", "?"),
+                                slot.get("heure_debut", "?"),
+                                slot.get("heure_fin", "?")
+                            ))
+                        planning_text = ", ".join(planning_lines)
+                        context_msg = (
+                            "L'utilisateur demande les horaires de l'activité '{}'.\n"
+                            "Planning depuis la base de données : {}.\n"
+                            "Réponds uniquement avec ces horaires, sans inventer d'autres créneaux."
+                        ).format(activite_doc.get("nom", activite_name), planning_text)
+                    else:
+                        context_msg = (
+                            "L'activité '{}' existe mais n'a pas encore de planning défini."
+                        ).format(activite_doc.get("nom", activite_name))
+                else:
+                    context_msg = (
+                        "L'activité '{}' n'a pas été trouvée dans la base de données. "
+                        "Informe poliment l'utilisateur."
+                    ).format(activite_name)
+
+                self._append_message(session_id, "assistant", context_msg)
+                try:
+                    assistant_text = self.llm.generate_chat(system_prompt, history)
+                    if assistant_text and assistant_text.strip():
+                        session = self.sessions.get(session_id)
+                        session["history"][-1] = {"role": "assistant", "content": assistant_text}
+                        self.sessions.update(session_id, session)
+                        return assistant_text, {"type": "provide_activity_hours", "activity": activite_name}
+                except Exception as e:
+                    print("[DialogManager] LLM error for activity hours:", e)
+
+                # Fallback
+                text = context_msg
+                self._append_message(session_id, "assistant", text)
+                return text, {"type": "provide_activity_hours", "activity": activite_name}
+
+            else:
+                # Pas d'activité précisée → horaires généraux du centre
+                horaires = self._get_center_hours()
+                if horaires is None:
+                    horaires = {"ouverture_heure": "08h00", "fermeture_heure": "22h00"}
+                ouverture = horaires["ouverture_heure"]
+                fermeture = horaires["fermeture_heure"]
+                horaires_text = "Le centre est ouvert de {} à {}.".format(ouverture, fermeture)
+
+                context_msg = "L'utilisateur demande les horaires d'ouverture du centre. Horaires: {}".format(horaires_text)
+                self._append_message(session_id, "assistant", context_msg)
+
+                try:
+                    print("[DialogManager] demander_heure: Appel LLM pour reformuler les horaires")
+                    assistant_text = self.llm.generate_chat(system_prompt, history)
+                    if assistant_text and assistant_text.strip():
+                        session = self.sessions.get(session_id)
+                        session["history"][-1] = {"role": "assistant", "content": assistant_text}
+                        self.sessions.update(session_id, session)
+                        return assistant_text, {"type": "provide_hours", "hours": horaires}
+                except Exception as e:
+                    print("[DialogManager] LLM error for hours:", e)
+
+                text = horaires_text
+                self._append_message(session_id, "assistant", text)
+                return text, {"type": "provide_hours", "hours": horaires}
         
         # --- Tarifs des activités ---
         if intent == "ask_pricing":
