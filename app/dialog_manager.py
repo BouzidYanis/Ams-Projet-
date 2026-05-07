@@ -1124,10 +1124,10 @@ class DialogManager:
         """
         inscriptions_col = db.get_collection("inscriptions")
         activity_col = db.get_collection("activite")
-        
+        print(user_name)
         # Étape 1 & 2: Trouver le document inscriptions où user_info = user_name
         inscriptions_doc = inscriptions_col.find_one({"user_info": user_name})
-        
+        print("Document inscriptions trouvé:", inscriptions_doc)
         if not inscriptions_doc:
             return (
                 "Je n'ai trouvé aucune inscription dans votre dossier.",
