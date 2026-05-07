@@ -292,12 +292,27 @@ class DialogManager:
         except Exception:
             self.system_prompt = DEFAULT_SYSTEM_PROMPT
 
-    def _get_system_prompt(self, lang: str = "fr") -> str:
-        """Retourne le system prompt approprié selon la langue."""
+    def _get_system_prompt(self, lang: str = "fr", user_name: str = None) -> str:
+        """
+        Retourne le system prompt approprié selon la langue, enrichi avec le contexte utilisateur si fourni.
+        """
         lang_key = (lang or "fr").strip().lower()
-        if lang_key.startswith("en"):
-            return DEFAULT_SYSTEM_PROMPT_EN
-        return DEFAULT_SYSTEM_PROMPT_FR
+        base_prompt = DEFAULT_SYSTEM_PROMPT_EN if lang_key.startswith("en") else DEFAULT_SYSTEM_PROMPT_FR
+        
+        # Enrichir le prompt avec le contexte utilisateur
+        if user_name:
+            user_context = (
+                "\n\nCONTEXTE UTILISATEUR:\n"
+                "L'utilisateur s'appelle '{user_name}'. Dans ta réponse, "
+                "mentionne son prénom pour personaliser le dialogue et créer une meilleure expérience utilisateur."
+            ).format(user_name=user_name) if lang_key.startswith("fr") else (
+                "\n\nUSER CONTEXT:\n"
+                "The user's name is '{user_name}'. In your response, "
+                "mention their name to personalize the conversation and create a better user experience."
+            ).format(user_name=user_name)
+            return base_prompt + user_context
+        
+        return base_prompt
 
     def _get_rules(self, lang: str = "fr") -> Dict[str, Any]:
         """Retourne les rules appropriées selon la langue."""
@@ -615,7 +630,8 @@ class DialogManager:
                     continue
 
                 title = str(
-                    doc.get("nom")
+                    doc.get("nom_evenement")
+                    or doc.get("nom")
                     or doc.get("titre")
                     or doc.get("title")
                     or doc.get("name")
@@ -1053,6 +1069,137 @@ class DialogManager:
 
         return None
 
+    def _get_closest_weekday(self, planning_slots: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Retourne le slot de planning dont le jour est le plus proche d'aujourd'hui (parmi les jours futurs ou actuels)."""
+        if not planning_slots:
+            return None
+
+        days_map = {
+            "lundi": 0, "lundi ": 0,
+            "mardi": 1, "mardi ": 1,
+            "mercredi": 2, "mercredi ": 2,
+            "jeudi": 3, "jeudi ": 3,
+            "vendredi": 4, "vendredi ": 4,
+            "samedi": 5, "samedi ": 5,
+            "dimanche": 6, "dimanche ": 6
+        }
+
+        today = datetime.now()
+        current_weekday = today.weekday()
+        
+        closest_slot = None
+        min_days_diff = 7
+
+        for slot in planning_slots:
+            jour = (slot.get("jour") or "").lower().strip()
+            jour_num = days_map.get(jour)
+            
+            if jour_num is None:
+                continue
+            
+            # Calculer la distance entre aujourd'hui et ce jour
+            if jour_num >= current_weekday:
+                days_diff = jour_num - current_weekday
+            else:
+                days_diff = 7 - current_weekday + jour_num
+            
+            if days_diff < min_days_diff:
+                min_days_diff = days_diff
+                closest_slot = slot
+
+        return closest_slot
+
+    def _get_registered_activity_schedule_from_collections(self, user_name: str) -> Tuple[str, Dict[str, Any]]:
+        """
+        Récupère l'horaire de l'activité inscrite d'un adhérent via les collections inscriptions et activite.
+        
+        Workflow:
+        1. Aller à la collection 'inscriptions' et trouver le document où user_info = user_name
+        2. Dans ce document, accéder à update_query -> inscriptions (liste)
+        3. Pour chaque inscription, récupérer nom_activite
+        4. Aller à la collection 'activite' et chercher nom = nom_activite
+        5. Dans ce document, aller à planning (liste)
+        6. Récupérer le jour le plus proche d'aujourd'hui
+        7. Récupérer heure_debut et heure_fin
+        """
+        inscriptions_col = db.get_collection("inscriptions")
+        activity_col = db.get_collection("activite")
+        
+        # Étape 1 & 2: Trouver le document inscriptions où user_info = user_name
+        inscriptions_doc = inscriptions_col.find_one({"user_info": user_name})
+        
+        if not inscriptions_doc:
+            return (
+                "Je n'ai trouvé aucune inscription dans votre dossier.",
+                {"type": "registered_activity_schedule_empty"}
+            )
+        
+        # Récupérer la liste des inscriptions depuis update_query
+        update_query = inscriptions_doc.get("update_query", {})
+        inscriptions_list = update_query.get("inscriptions", [])
+        
+        if not inscriptions_list:
+            return (
+                "Je n'ai trouvé aucune activité inscrite dans votre dossier.",
+                {"type": "registered_activity_schedule_empty"}
+            )
+        
+        lines = []
+        not_found = []
+        
+        # Étape 3 & 4: Pour chaque inscription, récupérer le nom et chercher dans activite
+        for inscription in inscriptions_list:
+            nom_activite = inscription.get("nom_activite") or inscription.get("nom") or ""
+            
+            if not nom_activite:
+                continue
+            
+            # Chercher dans la collection activite
+            activity_doc = activity_col.find_one({"nom": nom_activite})
+            
+            if not activity_doc:
+                not_found.append(nom_activite)
+                continue
+            
+            # Étape 5 & 6: Récupérer le planning et trouver le jour le plus proche
+            planning = activity_doc.get("planning", []) or []
+            
+            if not planning:
+                lines.append(f"- {nom_activite} : aucun horaire renseigné pour le moment.")
+                continue
+            
+            closest_slot = self._get_closest_weekday(planning)
+            
+            if not closest_slot:
+                lines.append(f"- {nom_activite} : aucun horaire renseigné pour le moment.")
+                continue
+            
+            # Étape 7: Récupérer heure_debut et heure_fin
+            heure_debut = closest_slot.get("heure_debut") or closest_slot.get("start") or "?"
+            heure_fin = closest_slot.get("heure_fin") or closest_slot.get("end") or "?"
+            jour = closest_slot.get("jour") or "jour inconnu"
+            salle = closest_slot.get("salle") or closest_slot.get("nom_salle") or ""
+            
+            piece = f"- {nom_activite} : {jour} de {heure_debut} à {heure_fin}"
+            if salle:
+                piece += f" en {salle}"
+            
+            lines.append(piece)
+        
+        if not lines:
+            return (
+                "Je n'ai pas réussi à retrouver les horaires des activités inscrites.",
+                {"type": "registered_activity_schedule_not_found", "missing": not_found}
+            )
+        
+        text = "Voici les horaires de votre activité inscrite en tant qu'adhérent :\n" + "\n".join(lines)
+        actions = {
+            "type": "registered_activity_schedule",
+            "activities": lines,
+            "missing": not_found
+        }
+        return text, actions
+
     def _format_registered_activity_schedule(self, user_doc: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
         """Construit le texte des horaires pour les activités inscrites de l'utilisateur."""
         inscriptions = user_doc.get("inscriptions", []) or []
@@ -1126,26 +1273,20 @@ class DialogManager:
         return text, actions
 
     def _handle_registered_activity_schedule(self, session_id: str, user_name: str | None, user_role: str | None) -> Tuple[str, Dict[str, Any]]:
-        """Vérifie le rôle utilisateur puis retourne les horaires des activités inscrites."""
+        """Vérifie le rôle utilisateur puis retourne les horaires des activités inscrites en suivant le workflow de collections."""
         normalized_role = self._normalize_person_name(user_role).replace("é", "e")
         if normalized_role and normalized_role not in {"adherent", "adhérent"}:
             text = "Cette information est réservée aux adhérents."
             self._append_message(session_id, "assistant", text)
             return text, {"type": "registered_activity_schedule_forbidden", "role": user_role}
 
-        user_doc = self._find_user_document(user_name)
-        if not user_doc:
-            text = "Je n'ai pas pu retrouver votre dossier utilisateur pour vérifier vos inscriptions."
+        if not user_name:
+            text = "Je n'ai pas pu identifier votre nom pour vérifier vos inscriptions."
             self._append_message(session_id, "assistant", text)
             return text, {"type": "registered_activity_schedule_user_not_found"}
 
-        db_role = self._normalize_person_name(user_doc.get("role", "")).replace("é", "e")
-        if db_role and db_role not in {"adherent", "adhérent"}:
-            text = "Cette information est réservée aux adhérents."
-            self._append_message(session_id, "assistant", text)
-            return text, {"type": "registered_activity_schedule_forbidden", "role": user_doc.get("role")}
-
-        text, actions = self._format_registered_activity_schedule(user_doc)
+        # Utiliser la nouvelle fonction qui suit le workflow des collections
+        text, actions = self._get_registered_activity_schedule_from_collections(user_name)
         self._append_message(session_id, "assistant", text)
         return text, actions
 
@@ -1361,6 +1502,10 @@ class DialogManager:
         user_text = parse_result.get("raw_text") or parse_result.get("text") or ""
         user_name = parse_result.get("user_name", None)  # Nom issu de la reconnaissance faciale
         user_role = parse_result.get("user_role", None)  # Rôle issu de la reconnaissance faciale
+
+        # Enrichir le system_prompt avec le contexte utilisateur si le nom est connu
+        if user_name:
+            system_prompt = self._get_system_prompt(lang, user_name=user_name)
 
         # store user message in history with NLU metadata
         if user_text:

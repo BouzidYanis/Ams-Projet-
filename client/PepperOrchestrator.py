@@ -127,11 +127,9 @@ class PepperConnector:
 
         try:
             # 2. EXECUTION SYNCHRONE
-            # .post lance la tâche en arrière-plan et retourne un ID
-            # .wait(id, 0) bloque le script jusqu'à ce que cet ID soit terminé
+            # ALAnimatedSpeech.say() est déjà synchrone (bloquant)
             if self.tts:
-                say_id = self.tts.post.say(text_bytes)
-                self.tts.wait(say_id, 0) 
+                self.tts.say(text_bytes)
             else:
                 print("[TTS] Erreur: Service TTS non initialisé.")
                 

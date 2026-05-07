@@ -28,12 +28,13 @@ class NetworkClient:
         """Envoie le texte transcrit au DialogManager et retourne la réponse."""
         payload = {
             "text": text,
-            "lang": lang,
-            "session_id": session_id
+            "lang": lang
         }
-        # Ajouter le nom si disponible
-        if user_name:
-            payload["user_name"] = user_name
+        # Ajouter les champs optionnels seulement s'ils ont une valeur
+        if session_id is not None:
+            payload["session_id"] = session_id
+        if user_name is not None and user_name:
+            payload["user_name"] = str(user_name)  # S'assurer que c'est une string
 
         try:
             url = "{0}/v1/respond".format(self.server)

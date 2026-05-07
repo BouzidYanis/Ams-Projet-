@@ -32,6 +32,7 @@ class ASREngine:
         self.wake_words = wake_words
         
         # Flags de contrôle (Pilotés par le Main)
+        self.is_speaking = False
         self.is_running = True
         self.is_engaged = False      # True = Mode conversation
         self.is_listening = False    # True = Arm D transcrit (Le robot ne parle pas)
@@ -79,20 +80,21 @@ class ASREngine:
 
 
             if full_path:
-                payload = (count, full_path)
-                for q in self.queues.values():
-                    q.put(payload)
-                
-                # --- NETTOYAGE AUTO ---
-                # Supprime le chunk d'il y a 50 secondes
-                old_idx = count - 50
-                if old_idx >= 0:
-                    old_name = os.path.join(TMP_DIR, "chunk_{}.wav".format(old_idx))
-                    if os.path.exists(old_name):
-                        try: os.remove(old_name)
-                        except: pass
-                
-                count += 1
+                if not self.is_speaking: # On n'enregistre que si le robot ne parle pas    
+                    payload = (count, full_path)
+                    for q in self.queues.values():
+                        q.put(payload)
+                    
+                    # --- NETTOYAGE AUTO ---
+                    # Supprime le chunk d'il y a 50 secondes
+                    old_idx = count - 50
+                    if old_idx >= 0:
+                        old_name = os.path.join(TMP_DIR, "chunk_{}.wav".format(old_idx))
+                        if os.path.exists(old_name):
+                            try: os.remove(old_name)
+                            except: pass
+                    
+                    count += 1
 
 
     # --- BRAS B: VEILLEUR (WAKE WORD) ---
@@ -117,7 +119,7 @@ class ASREngine:
                         # L'index de réveil est le premier chunk du buffer (le début du "Pepper")
                         self.wake_chunk_index = idx
                         self.is_engaged = True
-                        self.is_listening = True # On active l'oreille (Arm D)
+                        #self.is_listening = True # On active l'oreille (Arm D)
                                         
                     self.queues["B"].task_done()
                 except Queue.Empty: pass
@@ -156,7 +158,8 @@ class ASREngine:
         """
         batch = []
         active_transcript_list = [] 
-        consecutive_silence = 0
+        # consecutive_silence = 0
+        silence_window = collections.deque(maxlen=5)
 
         while self.is_running:
             try:
@@ -173,12 +176,18 @@ class ASREngine:
                     #     continue
                     print("D : Received chunk {} with name {}".format(idx, name))
                     if idx >= self.wake_chunk_index:
-                        # 1. Analyse du chunk individuel (1s)
-                        if self.audio.is_silent(name):
-                            consecutive_silence += 1
-                        else:
-                            consecutive_silence = 0
                         
+                        #OLD
+                        # 1. Analyse du chunk individuel (1s)
+                        # if self.audio.is_silent(name):
+                        #     consecutive_silence += 1
+                        # else:
+                        #     consecutive_silence = 0
+                        
+                        #NEW
+                        silence_window.append(self.audio.is_silent(name))
+                        consecutive_silence = sum(silence_window)
+
                         batch.append(name)
                         print("D : batch content :", batch)
                         print("D : active_transcript_list :", active_transcript_list)
@@ -186,14 +195,17 @@ class ASREngine:
                         # 2. CAS A : Le batch est plein (ex: 5s) -> On transcrit
                         if len(batch) >= self.transcript_batch_size:
                             filename = "D_batch_{}s_{}.wav".format(self.transcript_batch_size, idx)
-                            merged = self.audio.merge_wavs(batch, filename)
                             
-                            res = self.net.send_asr_file(merged)
-                            if res and res.get("text"):
-                                active_transcript_list.append(res.get("text"))
+                            # Only send to ASR if at least one chunk has speech
+                            has_speech = any(not self.audio.is_silent(f) for f in batch)
+                            if has_speech:
+                                merged = self.audio.merge_wavs(batch, filename)
+                                res = self.net.send_asr_file(merged)
+                                if res and res.get("text"):
+                                    active_transcript_list.append(res.get("text"))
                             
-                            batch = [] # On repart sur un nouveau batch
-
+                            batch = []
+                            
                         # 3. CAS B : Seuil de silence atteint -> On flush et on arrête
                         if consecutive_silence >= self.silence_delay:
                             # S'il reste des morceaux dans le batch actuel, on les envoie
@@ -212,6 +224,7 @@ class ASREngine:
                             batch = []
                             active_transcript_list = []
                             consecutive_silence = 0
+                            silence_window.clear()
                             self.is_listening = False # On arrête l'écoute (Arm D & C s'arrêtent)
 
                     self.queues["D"].task_done()

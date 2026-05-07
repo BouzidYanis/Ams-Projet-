@@ -18,6 +18,7 @@ if not os.path.exists(TMP_DIR):
 VAD_FRAME_SIZE = 320 # 10ms à 16000Hz (16kHz * 0.01s * 2 bytes) = 320 bytes
 VAD_AGGRESIVENESS_3 = 3  # 0-3, plus c'est élevé, plus le VAD est strict
 SILENT_FRAMES_RUN = 2
+SPEECH_RATIO_THRESHOLD = 0.70  # Seuil de ratio de parole pour considérer un segment comme silencieux (15% ou moins)
 
 SILENCHE_THRESHOLD = 800
 
@@ -275,7 +276,7 @@ class AudioSense:
                     chunks.append(full_path)
 
                     # 3. Analyse du silence sur le dernier chunk
-                    if not self.is_silent(full_path, speech_ratio_threshold=0.3):  # Increased threshold for tighter filtering
+                    if not self.is_silent(full_path, speech_ratio_threshold=SPEECH_RATIO_THRESHOLD):  # Increased threshold for tighter filtering
                         last_voice_time = time.time()
                     
                     # 4. Sortie si silence trop long
@@ -322,7 +323,7 @@ class AudioSense:
     #         wf.close()
 
     #Detect silence with VAD
-    def is_silent(self, wav_file, speech_ratio_threshold=0.15):
+    def is_silent(self, wav_file, speech_ratio_threshold=SPEECH_RATIO_THRESHOLD):
         """
         Scans the WAV file using WebRTC VAD.
         Returns True if the ratio of speech frames is below the threshold.
@@ -331,6 +332,7 @@ class AudioSense:
             return True
             
         wf = wave.open(wav_file, 'rb')
+        local_vad = webrtcvad.Vad(VAD_AGGRESIVENESS_3)
         try:
             # We must use 16000Hz for WebRTC VAD
             rate = wf.getframerate()
@@ -354,7 +356,7 @@ class AudioSense:
                     break
                 
                 frames_count += 1
-                if self.vad.is_speech(chunk, rate):
+                if local_vad.is_speech(chunk, rate):
                     speech_frames += 1
             
             if frames_count == 0: 
@@ -362,8 +364,8 @@ class AudioSense:
                 
             actual_ratio = float(speech_frames) / frames_count
             
-            # Debug log (optional)
-            # print("[VAD_CHECK] Speech Ratio: {:.2f} (Threshold: {})".format(actual_ratio, speech_ratio_threshold))
+            #Debug log (optional)
+            print("[VAD_CHECK] Speech Ratio: {:.2f} (Threshold: {})".format(actual_ratio, speech_ratio_threshold))
             
             # If less than 15% of the file is speech, treat as silent/noise
             return actual_ratio < speech_ratio_threshold

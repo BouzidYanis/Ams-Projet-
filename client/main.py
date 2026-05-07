@@ -27,7 +27,7 @@ SERVER_URL = "http://localhost:8001"
 # SERVER_URL = "http://10.60.55.34:8000"
 
 # Base URL pour les pages web (tablette)
-WEB_BASE_URL = "http://10.26.1.75:8001/"  # Ou "http://localhost:8000/" pour test
+WEB_BASE_URL = "http://10.26.7.76:8001/"  # Ou "http://localhost:8000/" pour test
 
 # URLs des pages web
 WEB_NAVIGATION_URL = WEB_BASE_URL + "carte_navigation.html"
@@ -45,11 +45,12 @@ PHONE_URL = "http://10.126.3.205:8080/audio.wav"
 
 # 3. ROBOT HARDWARE CONFIG
 PEPPER_IP = "192.168.13.202"
+# PEPPER_IP = "10.120.16.92"
 # PEPPER_IP = "127.0.0.1" # For local simulation (Choregraphe)
 PEPPER_PORT = 9559
 
 # 4. DIALOG & TIMING SETTINGS
-WAKE_WORDS = [u"pepper", u"bonjour"]
+WAKE_WORDS = [u"pepper", u"bonjour", u"Bonjour"]
 SILENCE_DELAY = 3.0
 CONVERSATION_TIMEOUT = 15
 SLOW_TIMEOUT = 50
@@ -96,10 +97,12 @@ class PepperAppMain():
         
         # Setup Audio Inputs based on MODE
         self.pepper_spec = None
+        self.tablet = None
         if MODE == "pepper":
             self.connector = PepperConnector(PEPPER_IP, PEPPER_PORT)
             if self.connector.connect():
                self.pepper_spec = PepperAudioCapture(self.connector.get_session())
+               self.tablet = self.connector.tablet  # Récupérer la tablette du connector
                self.connector.robot_say("Application demarrée - Vous pouvez parlez")
             pass
             
@@ -143,29 +146,47 @@ class PepperAppMain():
     def _update_logic(self):
         """Boucle de décision principale."""
 
+        # DEBUG: Afficher l'état des flags SEULEMENT quand is_engaged change
+        if self.asr.is_engaged:
+            if not hasattr(self, '_last_debug_state') or self._last_debug_state != self.asr.is_engaged:
+                print("[MAIN] *** ENGAGED *** is_listening={}, check_if_silent={}".format(
+                    self.asr.is_listening, self.asr.check_if_silent))
+                self._last_debug_state = self.asr.is_engaged
+
         # --- ÉTAPE 1 : RÉVEIL (Via Arm B) ---
-        # Here, the activation is done directly in Arm B inside asr object
+        # PLUS VRAI Here, the activation is done directly in Arm B inside asr object
         if self.asr.is_engaged and not self.asr.is_listening and not self.asr.check_if_silent:
-            print(u"[MAIN] Réveil ! Activation de l'oreille (Arm D).".encode('utf-8'))
-            self.asr.is_listening = True
-            self.last_interaction = time.time()
+            print(u"[MAIN] **RÉVEIL** Activation de l'oreille (Arm D).".encode('utf-8'))
+            
             self._log_state("WAKE_WORD")
 
+            print(u"Debug [MAIN-line 164]".encode('utf-8'))
             if MODE == "pepper":
+                print("[MAIN] Mode PEPPER detecté - Lancement reconnaissance faciale...")
+                self.asr.is_speaking = True
+                self.connector.robot_say(u"Bonjour ! Regardez-moi pour que je puisse vous reconnaitre".format(self.current_user).encode('utf-8'))
+                self.asr.is_speaking = False
                 user_name = self._try_face_recognition()
                 if user_name:
                     print(u"[MAIN] Utilisateur identifié : {}".format(user_name).encode('utf-8'))
-                    # You can store this in the session to pass to the LLM later
                     self.current_user = user_name
+                else:
+                    # Si reconnaissance faciale échoue, utiliser une valeur par défaut
+                    self.current_user = "Visiteur"
             else :
+                print("[MAIN] Mode PHONE detecté - Utilisateur par défaut")
                 self.current_user = "Patrice SEBASTIANO"
-
-            if MODE == "pepper":
-                self.connector.robot_say(u"Bonjour {}. Comment puis-je vous aider aujourd'hui ?".format(self.current_user).encode('utf-8'))
+            
+            self.asr.is_listening = True
+            self.last_interaction = time.time()
+            # if MODE == "pepper":
+            #     self.asr.is_speaking = True
+            #     self.connector.robot_say(u"Bonjour {}. Comment puis-je vous aider aujourd'hui ?".format(self.current_user).encode('utf-8'))
+            #     self.asr.is_speaking = False
 
         # --- ÉTAPE 2 : TRAITEMENT DU TEXTE (Via Arm D) ---
         if self.asr.is_engaged and self.asr.committed_transcript.strip():
-            captured_text = self.asr.committed_transcript.strip()
+            captured_text = self.asr.committed_transcript.strip() 
 
             self._log_state("TRANSCRIPT", user_text=captured_text)
             self.asr.committed_transcript = "" 
@@ -240,8 +261,10 @@ class PepperAppMain():
             if MODE == "pepper":
                 # Cette ligne bloque maintenant tout le script jusqu'à la fin du "parler"               
                 self.handle_actions(actions)
+                self.asr.is_speaking = True
                 self.connector.robot_say(answer)
-                
+                self.asr.is_speaking = False
+
                 if self.tablet:
                     self.tablet.hidePage()
                 
@@ -290,7 +313,9 @@ class PepperAppMain():
             print(u"[SATISFACTION] URL du formulaire: {}".format(satisfaction_url).encode('utf-8'))
         
         if MODE == "pepper":
+            self.asr.is_speaking = True
             self.connector.robot_say(u"Merci pour cette conversation. Pouvez-vous compléter le questionnaire sur la tablette ? Vous avez une minute.".encode('utf-8'))
+            self.asr.is_speaking = False
     
     def _close_satisfaction_form(self):
         """Ferme le formulaire de satisfaction."""
@@ -442,7 +467,7 @@ class PepperAppMain():
                             nom = nom.encode("utf-8")
                         if isinstance(prenom, unicode):
                             prenom = prenom.encode("utf-8")
-                        self.connector.robot_say(u"Bonjour {} {} !".format(prenom, nom))
+                        # self.connector.robot_say(u"Bonjour {} {} !".format(prenom, nom))
                     else:
                         print("[ACTION] Visage non reconnu")
                 else:
@@ -505,20 +530,40 @@ class PepperAppMain():
                 VERIFY_URL = SERVER_URL + "/v1/verify"
 
                 print("[FACE] Lancement de la detection faciale...")
-                self.leds.fadeRGB("FaceLeds", 0x00FFFF00, 0.3)
+                
+                # Vérifier que le connector est disponible
+                if not hasattr(self, 'connector') or not self.connector:
+                    print("[FACE] Erreur: Connecteur Pepper non disponible")
+                    return None
+                
+                # Utiliser self.connector pour accéder aux services Pepper
+                if self.connector.leds:
+                    self.connector.leds.fadeRGB("FaceLeds", 0x00FFFF00, 0.3)
 
-                flow = FaceRecoFlow(self.session, verify_url=VERIFY_URL)
+                flow = FaceRecoFlow(self.connector.session, verify_url=VERIFY_URL)
                 flow.start_face_detection()
 
                 face_data = flow.wait_for_face(timeout_s=8)
                 if not face_data:
                     flow.stop_face_detection()
-                    return None, None
+                    return None
 
                 image_bytes, meta = flow.take_picture()
                 flow.stop_face_detection()
+                
+                # DEBUG: Vérifier que l'image n'est pas vide
+                if not image_bytes:
+                    print("[FACE] Erreur: image vide")
+                    return None
+                
+                print("[FACE] Image capturée: {} bytes".format(len(image_bytes)))
 
-                result = flow.call_verify_api(image_bytes, meta=meta)
+                try:
+                    result = flow.call_verify_api(image_bytes, meta=meta)
+                except Exception as api_error:
+                    print("[FACE] Erreur API /v1/verify: {}".format(str(api_error)))
+                    return None
+                    
                 print(result)
                 if result and result.get("matched") and result.get("best_match"):
                     best = result["best_match"]
@@ -532,24 +577,32 @@ class PepperAppMain():
 
                     # FIX: utiliser b"" concatenation pour le print, pas .format() avec unicode
                     print("[FACE] Personne reconnue: " + prenom_b + " " + nom_b)
+                    user = prenom + " " + nom
 
                     # Retourner les unicode originaux (pas les bytes) pour l'usage ultérieur
-                    return prenom, nom
+                    return user
                 else:
                     print("[FACE] Personne non reconnue.")
-                    return None, None
+                    return None
 
             except Exception as e:
                 # FIX: triple protection contre UnicodeEncodeError
                 try:
-                    err_str = unicode(e).encode("utf-8")
+                    # Essayer de convertir l'exception en bytes UTF-8 directement
+                    if isinstance(str(e), unicode):
+                        err_bytes = str(e).encode("utf-8")
+                    else:
+                        err_bytes = str(e)
+                    # Pas de concatenation de strings, juste afficher les bytes
+                    print("[FACE] Erreur reconnaissance faciale: " + err_bytes)
                 except Exception:
                     try:
-                        err_str = str(e)
+                        # Fallback: utiliser repr()
+                        print("[FACE] Erreur reconnaissance faciale: " + repr(e))
                     except Exception:
-                        err_str = "erreur inconnue"
-                print("[FACE] Erreur reconnaissance faciale: " + err_str)
-                return None, None
+                        # Fallback final
+                        print("[FACE] Erreur reconnaissance faciale")
+                return None
 
 
 if __name__ == "__main__":
