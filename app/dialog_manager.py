@@ -687,9 +687,9 @@ class DialogManager:
 
         return "\n".join(lines)
 
-    def _handle_special_events(self, session_id: str, history: List[Dict[str, str]], lang: str = "fr") -> Tuple[str, Dict[str, Any]]:
+    def _handle_special_events(self, session_id: str, history: List[Dict[str, str]], lang: str = "fr", user_name: str = None) -> Tuple[str, Dict[str, Any]]:
         """Récupère les prochains événements et laisse le LLM formuler la réponse finale."""
-        system_prompt = self._get_system_prompt(lang)
+        system_prompt = self._get_system_prompt(lang, user_name=user_name) if user_name else self._get_system_prompt(lang)
         events = self._collect_special_events()
 
         if not events:
@@ -2075,7 +2075,7 @@ class DialogManager:
             return self._handle_registered_activity_schedule(session_id, user_name, user_role)
 
         elif intent == "ask_special_events":
-            return self._handle_special_events(session_id, history, lang=lang)
+            return self._handle_special_events(session_id, history, lang=lang, user_name=user_name)
 
         elif intent == "ask_available_slots":
             # L'utilisateur demande les créneaux disponibles
