@@ -233,6 +233,10 @@ class ASREngine:
                             consecutive_silence = 0
                             silence_window.clear()
                             self.is_listening = False # On arrête l'écoute (Arm D & C s'arrêtent)
+                            # Si la conversation est déjà en cours (pas de transcript valide),
+                            # on repasse la main à Arm C pour éviter de re-déclencher ÉTAPE 1 (reco faciale)
+                            if not self.committed_transcript.strip():
+                                self.check_if_silent = True
 
                     self.queues["D"].task_done()
             except Queue.Empty:

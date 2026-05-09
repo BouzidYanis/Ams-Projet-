@@ -1834,14 +1834,14 @@ class DialogManager:
                         session = self.sessions.get(session_id)
                         session["history"][-1] = {"role": "assistant", "content": assistant_text}
                         self.sessions.update(session_id, session)
-                        return assistant_text, {"type": "provide_activity_hours", "activity": activite_name}
+                        return assistant_text, {"type": "provide_activity_hours", "activity": activite_name, "planning": planning}
                 except Exception as e:
                     print("[DialogManager] LLM error for activity hours:", e)
 
                 # Fallback
                 text = context_msg
                 self._append_message(session_id, "assistant", text)
-                return text, {"type": "provide_activity_hours", "activity": activite_name}
+                return text, {"type": "provide_activity_hours", "activity": activite_name, "planning": planning}
 
             else:
                 # Pas d'activité précisée → horaires généraux du centre

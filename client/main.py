@@ -38,13 +38,13 @@ WEB_URL = WEB_BASE_URL #C'est quoi ça Yanis ?
 
 # 2. AUDIO SOURCE CONFIG
 # MODE = "phone"  # Options: "phone" or "pepper"
-MODE = "pepper"  # Options: "phone" or "pepper"
+MODE = "phone"  # Options: "phone" or "pepper"
 
-PHONE_URL = "http://10.126.3.205:8080/audio.wav"
+PHONE_URL = "http://10.18.69.149:8080/audio.wav"
 #PHONE_URL = "http://10.60.55.196:8080/audio.wav"
 
 # 3. ROBOT HARDWARE CONFIG
-PEPPER_IP = "192.168.13.203"
+PEPPER_IP = "192.168.13.202"
 # PEPPER_IP = "10.120.16.92"
 # PEPPER_IP = "127.0.0.1" # For local simulation (Choregraphe)
 PEPPER_PORT = 9559

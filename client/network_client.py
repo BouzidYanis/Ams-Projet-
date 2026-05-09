@@ -2,7 +2,7 @@
 import requests
 import os
 
-REQUEST_TIMEOUT = 60
+REQUEST_TIMEOUT = 70
 
 class NetworkClient:
     def __init__(self, server_url, timeout):
