@@ -314,6 +314,24 @@ class DialogManager:
         
         return base_prompt
 
+    def _get_minimal_system_prompt(self, lang: str = "fr", user_name: str | None = None) -> str:
+        """
+        Retourne un prompt minimal à envoyer pour les requêtes suivantes
+        d'une même session. Contient les règles essentielles (langue, ton)
+        et éventuellement le nom de l'utilisateur.
+        """
+        lang_key = (lang or "fr").strip().lower()
+        if lang_key.startswith("en"):
+            base = "You are the robot's conversational assistant. Reply in English, politely, concisely and helpfully."
+            if user_name:
+                base += f" The user's name is '{user_name}'. You may use it briefly."
+            return base
+        else:
+            base = "Tu es l'assistant conversationnel du robot. Réponds en français, de façon polie, concise et utile."
+            if user_name:
+                base += f" L'utilisateur s'appelle '{user_name}'. Tu peux le mentionner brièvement."
+            return base
+
     def _get_rules(self, lang: str = "fr") -> Dict[str, Any]:
         """Retourne les rules appropriées selon la langue."""
         lang_key = (lang or "fr").strip().lower()
@@ -1518,6 +1536,19 @@ class DialogManager:
 
         session = self.sessions.get(session_id)
         history: List[Dict[str, str]] = session.get("history", [])
+
+        # --- Envoyer le system prompt complet uniquement la première fois par session ---
+        try:
+            if not session.get("system_prompt_sent"):
+                # première requête : marquer la session
+                session["system_prompt_sent"] = True
+                self.sessions.update(session_id, session)
+            else:
+                # requêtes suivantes : utiliser un prompt minimal
+                system_prompt = self._get_minimal_system_prompt(lang, user_name=user_name)
+        except Exception:
+            # En cas d'erreur de session, ne pas bloquer la génération
+            pass
 
         actions = {}
 
