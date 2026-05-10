@@ -734,6 +734,7 @@ class DialogManager:
 
         try:
             print("[DialogManager] ask_special_events: Appel LLM pour reformuler les événements")
+            history = self.sessions.get(session_id).get("history", [])
             assistant_text = self.llm.generate_chat(system_prompt, history)
             if assistant_text and assistant_text.strip():
                 session = self.sessions.get(session_id)
@@ -1797,6 +1798,7 @@ class DialogManager:
             self._append_message(session_id, "assistant", context_msg)
             try:
                 print("[DialogManager] greeting: Appel LLM pour générer une réponse adaptée")
+                history = self.sessions.get(session_id).get("history", [])
                 assistant_text = self.llm.generate_chat(system_prompt, history)
                 if assistant_text and assistant_text.strip():
                     # Remplacer le message context par la vraie réponse LLM
@@ -1861,6 +1863,7 @@ class DialogManager:
 
                 self._append_message(session_id, "assistant", context_msg)
                 try:
+                    history = self.sessions.get(session_id).get("history", [])
                     assistant_text = self.llm.generate_chat(system_prompt, history)
                     if assistant_text and assistant_text.strip():
                         session = self.sessions.get(session_id)
@@ -1893,6 +1896,7 @@ class DialogManager:
 
                 try:
                     print("[DialogManager] demander_heure: Appel LLM pour reformuler les horaires")
+                    history = self.sessions.get(session_id).get("history", [])
                     assistant_text = self.llm.generate_chat(system_prompt, history)
                     if assistant_text and assistant_text.strip():
                         session = self.sessions.get(session_id)
@@ -1937,6 +1941,7 @@ class DialogManager:
                     self._append_message(session_id, "assistant", context_msg)
                     try:
                         print("[DialogManager] ask_pricing: Appel LLM pour reformuler le tarif")
+                        history = self.sessions.get(session_id).get("history", [])
                         assistant_text = self.llm.generate_chat(system_prompt, history)
                         if assistant_text and assistant_text.strip():
                             session = self.sessions.get(session_id)
@@ -1988,6 +1993,7 @@ class DialogManager:
                     self._append_message(session_id, "assistant", context_msg)
                     try:
                         print("[DialogManager] ask_pricing (all): Appel LLM pour reformuler les tarifs")
+                        history = self.sessions.get(session_id).get("history", [])
                         assistant_text = self.llm.generate_chat(system_prompt, history)
                         if assistant_text and assistant_text.strip():
                             session = self.sessions.get(session_id)
@@ -2063,6 +2069,7 @@ class DialogManager:
                 # Laisser le LLM générer sa propre réponse
                 try:
                     print("[DialogManager] ask_activities: Appel LLM pour reformuler la liste")
+                    history = self.sessions.get(session_id).get("history", [])
                     assistant_text = self.llm.generate_chat(system_prompt, history)
                     if assistant_text and assistant_text.strip():
                         # Remplacer le message context par la vraie réponse LLM
@@ -2076,7 +2083,7 @@ class DialogManager:
                 
                 # Fallback si LLM échoue
                 text = "Nous proposons les activités suivantes : {}. Laquelle vous intéresse ?".format(activities_list)
-                actions = {"type": "ask_activity"}
+                actions = {"type": "ask_activity", 'activities': activities_list}
                 return text, actions
             else:
                 activity = _normalize_activity_name(activity)
@@ -2092,6 +2099,7 @@ class DialogManager:
                     self._append_message(session_id, "assistant", context_msg)
                     try:
                         print("[DialogManager] ask_activities (spécific): Appel LLM pour reformuler")
+                        history = self.sessions.get(session_id).get("history", [])
                         assistant_text = self.llm.generate_chat(system_prompt, history)
                         if assistant_text and assistant_text.strip():
                             # Remplacer le message context par la vraie réponse LLM
@@ -2313,6 +2321,7 @@ class DialogManager:
                     try:
                         # Laisser le LLM générer une réponse naturelle
                         print("[DialogManager] ask_my_reservations: Calling LLM to format reservations")
+                        history = self.sessions.get(session_id).get("history", [])
                         assistant_text = self.llm.generate_chat(system_prompt, history)
                         
                         if assistant_text and assistant_text.strip():
@@ -2369,6 +2378,7 @@ class DialogManager:
             self._append_message(session_id, "assistant", context_msg)
             try:
                 print("[DialogManager] unknown intent: Calling LLM with helpful context")
+                history = self.sessions.get(session_id).get("history", [])
                 assistant_text = self.llm.generate_chat(system_prompt, history)
                 if assistant_text and assistant_text.strip():
                     # Remplacer le message context par la vraie réponse LLM
@@ -2394,6 +2404,7 @@ class DialogManager:
             print("[DialogManager] System prompt length:", len(system_prompt))
             print("[DialogManager] History length:", len(history))
 
+            history = self.sessions.get(session_id).get("history", [])
             assistant_text = self.llm.generate_chat(system_prompt, history)
             
             if not assistant_text or not assistant_text.strip():
