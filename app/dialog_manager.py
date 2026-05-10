@@ -1866,14 +1866,18 @@ class DialogManager:
                         session = self.sessions.get(session_id)
                         session["history"][-1] = {"role": "assistant", "content": assistant_text}
                         self.sessions.update(session_id, session)
-                        return assistant_text, {"type": "provide_activity_hours", "activity": activite_name, "planning": planning}
+                        # Convert planning to JSON-serializable format (convert ObjectId to string)
+                        planning_serializable = json.loads(json.dumps(planning, default=str))
+                        return assistant_text, {"type": "provide_activity_hours", "activity": activite_name, "planning": planning_serializable}
                 except Exception as e:
                     print("[DialogManager] LLM error for activity hours:", e)
 
                 # Fallback
                 text = context_msg
                 self._append_message(session_id, "assistant", text)
-                return text, {"type": "provide_activity_hours", "activity": activite_name, "planning": planning}
+                # Convert planning to JSON-serializable format (convert ObjectId to string)
+                planning_serializable = json.loads(json.dumps(planning, default=str))
+                return text, {"type": "provide_activity_hours", "activity": activite_name, "planning": planning_serializable}
 
             else:
                 # Pas d'activité précisée → horaires généraux du centre
