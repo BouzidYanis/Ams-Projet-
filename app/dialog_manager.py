@@ -2025,9 +2025,12 @@ class DialogManager:
                     instructions_text = " ".join(steps)
                     
                     # Laisser le LLM reformuler les instructions de navigation
-                    context_msg = "L'utilisateur demande comment aller à '{}'. Voici les instructions: {}".format(
-                        destination, instructions_text
-                    )
+                    context_msg = (
+                        "L'utilisateur demande comment aller à '{}'. Voici les instructions: {}. "
+                        "Réécris ces instructions STRICTEMENT sous forme d'étapes courtes, numérotées ou une phrase par ligne, "
+                        "prêtes à être prononcées par le robot. Ne demande pas si l'utilisateur veut une escorte, ne rajoute pas de texte de confort, "
+                        "ne fournis rien d'autre que les étapes claires et concises à dire à voix haute."
+                    ).format(destination, instructions_text)
                     self._append_message(session_id, "assistant", context_msg)
                     try:
                         print("[DialogManager] navigate: Appel LLM pour reformuler les instructions")
@@ -2072,31 +2075,41 @@ class DialogManager:
         elif intent == "ask_activities":
             activity = entities.get("activity", [""])[0]
             if not activity:
-                cursor = db.get_collection("activite").find({}, {"_id": 0, "nom": 1})
-                names = list(sport["nom"] for sport in cursor)
-                print(names)
-                # Laisser le LLM reformuler la liste d'activités
-                activities_list = ", ".join(names) if names else "plusieurs activités"
-                # Ajouter un message système pour guider le LLM
-                context_msg = "Voici la liste de nos activités: {}. L'utilisateur m'a demandé quelles activités nous proposons.".format(activities_list)
-                self._append_message(session_id, "assistant", context_msg)
-                # Laisser le LLM générer sa propre réponse
+                # Récupérer les documents complets des activités (sans _id)
+                cursor = list(db.get_collection("activite").find({}, {"_id": 0}))
+                activities = list(cursor)
+                names = [a.get("nom") for a in activities if a.get("nom")]
+
+                # Préparer une version sérialisable JSON des activités pour le contexte et les actions
                 try:
-                    print("[DialogManager] ask_activities: Appel LLM pour reformuler la liste")
+                    activities_serializable = json.loads(json.dumps(activities, ensure_ascii=False, default=str))
+                except Exception:
+                    activities_serializable = activities
+
+                activities_list = ", ".join(names) if names else "plusieurs activités"
+                # Fournir les données complètes au LLM afin qu'il puisse reformuler proprement
+                context_msg = (
+                    "Voici la liste de nos activités: {}. Données: {}. "
+                    "L'utilisateur m'a demandé quelles activités nous proposons. Réponds en donnant des informations utiles et concises."
+                ).format(activities_list, json.dumps(activities_serializable, ensure_ascii=False))
+                self._append_message(session_id, "assistant", context_msg)
+                # Laisser le LLM générer sa propre réponse en se basant sur les documents complets
+                try:
+                    print("[DialogManager] ask_activities: Appel LLM pour reformuler la liste (documents complets)")
                     assistant_text = self.llm.generate_chat(system_prompt, history)
                     if assistant_text and assistant_text.strip():
                         # Remplacer le message context par la vraie réponse LLM
                         session = self.sessions.get(session_id)
                         session["history"][-1] = {"role": "assistant", "content": assistant_text}
                         self.sessions.update(session_id, session)
-                        actions = {"type": "ask_activity"}
+                        actions = {"type": "ask_activity", "activities": activities_serializable}
                         return assistant_text, actions
                 except Exception as e:
                     print("[DialogManager] LLM error for ask_activities:", e)
-                
-                # Fallback si LLM échoue
+
+                # Fallback si LLM échoue: renvoyer une liste simple mais inclure les documents dans les actions
                 text = "Nous proposons les activités suivantes : {}. Laquelle vous intéresse ?".format(activities_list)
-                actions = {"type": "ask_activity"}
+                actions = {"type": "ask_activity", "activities": activities_serializable}
                 return text, actions
             else:
                 activity = _normalize_activity_name(activity)
