@@ -215,7 +215,7 @@ class PepperAppMain():
             if time.time() - self.satisfaction_form_timeout > 60:  # 60 secondes
                 print(u"[MAIN] Formulaire inactif (1 min). Retour en veille.".encode('utf-8'))
                 self._close_satisfaction_form()
-                self._go_to_sleep()
+                self._go_to_sleep(show_satisfaction_form=False)
 
         # --- ÉTAPE 3 : GESTION DU TIMEOUT (Si Arm C ne détecte rien) ---
         if self.asr.is_engaged and self.asr.check_if_silent:
@@ -273,25 +273,30 @@ class PepperAppMain():
                 time.sleep(len(answer) * 0.05)
                 
     
-    def _go_to_sleep(self):
+    def _go_to_sleep(self, show_satisfaction_form=True):
         """Réinitialise l'état en veille."""
         print(u"[MAIN] Timeout : Retour en veille.".encode('utf-8'))
+        session_id = self.session_id
         self.asr.is_engaged = False
         self.asr.is_listening = False
         self.asr.check_if_silent = False
         self.asr.last_transcript = ""
-        self.session_id = None
+        if session_id:
+            self.net.send_sleep_mode(session_id=session_id, user_name=self.current_user)
         # Afficher le formulaire de satisfaction après la réponse
-        self._show_satisfaction_form()
+        if show_satisfaction_form:
+            self._show_satisfaction_form(session_id=session_id)
+        self.session_id = None
     
-    def _show_satisfaction_form(self):
+    def _show_satisfaction_form(self, session_id=None):
         """Affiche le formulaire de satisfaction et attend 1 minute avant fermeture automatique."""
-        if not self.session_id:
+        session_id = session_id or self.session_id
+        if not session_id:
             print(u"[SATISFACTION] Pas de session ID, impossible d'afficher le formulaire.".encode('utf-8'))
             return
         
         # Construire l'URL avec la session ID
-        satisfaction_url = "{}?session_id={}".format(WEB_SATISFACTION_URL, self.session_id)
+        satisfaction_url = "{}?session_id={}".format(WEB_SATISFACTION_URL, session_id)
         
         print(u"[SATISFACTION] Affichage du formulaire...".encode('utf-8'))
         self.satisfaction_form_displayed = True
@@ -311,8 +316,6 @@ class PepperAppMain():
             self.asr.is_speaking = True
             self.connector.robot_say(u"Merci pour cette conversation. Pouvez-vous compléter le questionnaire sur la tablette ? Vous avez une minute.".encode('utf-8'))
             self.asr.is_speaking = False
-            # Fermer le formulaire de satisfaction s'il est ouvert
-            self._close_satisfaction_form()
             
     def _close_satisfaction_form(self):
         """Ferme le formulaire de satisfaction."""

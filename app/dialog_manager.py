@@ -280,7 +280,7 @@ def convert_to_date(date_str: str) -> str:
 
 
 class DialogManager:
-    def __init__(self, sessions: SessionStore, llm_config_path: str = None):
+    def __init__(self, sessions: Any, llm_config_path: str = None):
         self.sessions = sessions
         cfg_path = llm_config_path or os.path.join(os.path.dirname(__file__), "..", "configs", llm_openai)
         self.llm = LLMClient(cfg_path)

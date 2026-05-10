@@ -1,4 +1,5 @@
 from pymongo import MongoClient, ASCENDING
+from pymongo import ReturnDocument
 from pymongo.errors import PyMongoError
 import time
 import uuid
@@ -25,6 +26,7 @@ class SessionStoreMongo:
             "created_at": now,
             "last_intent": None,
             "fallbacks": 0,
+            "status": "active",
             "last_touched": now
         }
         try:
@@ -40,7 +42,7 @@ class SessionStoreMongo:
             {"_id": session_id},
             {"$set": {"last_touched": now}},
             upsert=True,
-            return_document=True
+            return_document=ReturnDocument.AFTER
         )
         # Si la session n'existait pas, upsert=True la crée sans les champs par défaut, on corrige ça:
         if not session:
@@ -56,12 +58,32 @@ class SessionStoreMongo:
                 upsert=True
             )
             session = self.collection.find_one({"_id": session_id})
+                    "status": "active",
         return session
 
     def update(self, session_id: str, data: dict) -> bool:
         data["last_touched"] = time.time()
         result = self.collection.update_one(
             {"_id": session_id},
+
+    def mark_sleep(self, session_id: str, user_name: str = None) -> bool:
+        now = time.time()
+        session = self.get(session_id)
+        if not session:
+            return False
+
+        if user_name:
+            session["user_name"] = user_name
+
+        session["status"] = "sleep"
+        session["sleep_at"] = now
+        session["last_touched"] = now
+        result = self.collection.update_one(
+            {"_id": session_id},
+            {"$set": session},
+            upsert=True
+        )
+        return result.modified_count > 0 or result.upserted_id is not None
             {"$set": data},
             upsert=True
         )

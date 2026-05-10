@@ -10,11 +10,12 @@ import shutil
 import os
 import signal
 import json
+import time
 from datetime import datetime
 
 from app.nlu import NLU
 from app.dialog_manager import DialogManager
-from app.sessions import SessionStore
+from app.sessions_db import SessionStoreMongo
 from app.DB_access import DatabaseMongo
 from app.speech import ASRModule
 
@@ -80,7 +81,7 @@ if os.path.exists(static_dir):
     print(f"[INFO] Fichiers statiques montés depuis: {static_dir}")
 
 nlu = NLU()
-sessions = SessionStore()
+sessions = SessionStoreMongo()
 dialog = DialogManager(sessions)
 asr  = ASRModule(model_size="medium")
 db = DatabaseMongo()
@@ -330,23 +331,32 @@ def reset_session(session_id: str):
 
 
 @app.post("/v1/sleep_mode")
-def sleep_mode(session_id: Optional[str] = None):
+def sleep_mode(session_id: Optional[str] = None, user_name: Optional[str] = None):
     """
-    Entre en mode veille: réinitialise complètement la session (user_name, rôle, réservation, etc.)
-    Usage: POST /v1/sleep_mode?session_id=xyz
+    Entre en mode veille: archive la session en MongoDB avec le nom de l'utilisateur.
+    Usage: POST /v1/sleep_mode?session_id=xyz&user_name=Alice
     """
     if not session_id:
         return {"status": "error", "message": "session_id requis en paramètre"}
-    
-    ok = sessions.reset(session_id)
-    if not ok:
+
+    session_data = sessions.get(session_id)
+    if not session_data:
         raise HTTPException(status_code=404, detail="session not found")
+
+    if user_name:
+        session_data["user_name"] = user_name
+
+    session_data["status"] = "sleep"
+    session_data["sleep_at"] = datetime.utcnow().isoformat()
+    session_data["last_touched"] = time.time()
+    sessions.update(session_id, session_data)
     
     return {
         "status": "ok", 
         "session_id": session_id,
         "message": "Mode veille activé",
-        "user_cleared": True,
+        "saved_in_mongodb": True,
+        "user_name": session_data.get("user_name"),
         "ready_for_next_user": True
     }
 

@@ -50,6 +50,26 @@ class NetworkClient:
             print("[DIALOG] Erreur envoi: " + repr(e))  # FIX
             return None
 
+    def send_sleep_mode(self, session_id=None, user_name=None):
+        """Archive la session côté serveur quand le robot passe en veille."""
+        if not session_id:
+            return None
+
+        params = {"session_id": session_id}
+        if user_name:
+            params["user_name"] = str(user_name)
+
+        try:
+            url = "{0}/v1/sleep_mode".format(self.server)
+            resp = requests.post(url, params=params, timeout=REQUEST_TIMEOUT)
+            if resp.ok:
+                return resp.json()
+            print("[SLEEP] Erreur HTTP {}: {}".format(resp.status_code, resp.text[:200]))
+            return None
+        except Exception as e:
+            print("[SLEEP] Erreur envoi: " + repr(e))
+            return None
+
 #Vielle Version
     # def send_dialog_text(self, text, session_id=None, lang="fr"):
     #     """ Envoie le texte reconnu au DialogManager """
