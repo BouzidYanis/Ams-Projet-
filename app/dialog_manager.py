@@ -2022,39 +2022,11 @@ class DialogManager:
                 if nav:
                     steps = nav["instructions"]
                     destination = nav["destination"]
-                    # Concaténer les instructions en un texte lisible
-                    instructions_text = " ".join(steps)
                     
-                    # Laisser le LLM reformuler les instructions de navigation
-                    context_msg = (
-                        "L'utilisateur demande comment aller à '{}'. Voici les instructions: {}. "
-                        "Réécris ces instructions STRICTEMENT sous forme d'étapes courtes, numérotées ou une phrase par ligne, "
-                        "prêtes à être prononcées par le robot. Ne demande pas si l'utilisateur veut une escorte, ne rajoute pas de texte de confort, "
-                        "ne fournis rien d'autre que les étapes claires et concises à dire à voix haute."
-                    ).format(destination, instructions_text)
-                    self._append_message(session_id, "assistant", context_msg)
-                    try:
-                        print("[DialogManager] navigate: Appel LLM pour reformuler les instructions")
-                        assistant_text = self.llm.generate_chat(system_prompt, history)
-                        if assistant_text and assistant_text.strip():
-                            # Remplacer le message context par la vraie réponse LLM
-                            session = self.sessions.get(session_id)
-                            session["history"][-1] = {"role": "assistant", "content": assistant_text}
-                            self.sessions.update(session_id, session)
-                            actions = {
-                                "type": "navigate",
-                                "destination": destination,
-                                "destination_key": nav["destination_key"],
-                                "path": nav["path"],
-                                "instructions": steps,
-                            }
-                            return assistant_text, actions
-                    except Exception as e:
-                        print("[DialogManager] LLM error for navigate:", e)
+                    # Pas d'appel LLM : retourner directement les instructions formatées
+                    # Chaque instruction sur une ligne, prêtes à être prononcées
+                    text = "\n".join(steps)
                     
-                    # Fallback si LLM échoue
-                    intro = "Je vais vous guider vers {}. ".format(destination)
-                    text = intro + instructions_text
                     actions = {
                         "type": "navigate",
                         "destination": destination,
