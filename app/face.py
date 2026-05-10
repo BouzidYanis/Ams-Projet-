@@ -8,13 +8,20 @@ from pydantic import BaseModel
 
 import face_recognition
 from pymongo import MongoClient
+from dotenv import load_dotenv
 
 from urllib.request import Request, urlopen
 from urllib.parse import urlparse
 
 # --- Configuration ---
-MONGODB_URI = "mongodb+srv://byanismci_db_user:ciFm8mSSBfSB6GOh@cluster0.tdoyk6j.mongodb.net/multisport"
-MONGODB_DB = "multisport"
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env.local"))
+MONGODB_URI = os.getenv(
+    "MONGODB_URI",
+    os.getenv("MONGODB_URL"),
+)
+if not MONGODB_URI:
+    raise RuntimeError("MONGODB_URI is not set. Define it in your .env file.")
+MONGODB_DB = os.getenv("MONGODB_DB", "multisport")
 MONGODB_COLLECTION = "utilisateurs"
 
 FACE_TOLERANCE = float(os.getenv("FACE_TOLERANCE", "0.6"))

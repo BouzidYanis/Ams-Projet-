@@ -6,6 +6,9 @@ Configuration pour le serveur de dialogue avec synchronisation de réservation
 
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env.local")
 
 # ═══════════════════════════════════════════════════════════════════
 # SERVEUR FASTAPI
@@ -96,7 +99,7 @@ CORS_ORIGINS = [origin for origin in CORS_ORIGINS if origin]
 # ═══════════════════════════════════════════════════════════════════
 
 # MongoDB
-MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017/")
+MONGODB_URL = os.getenv("MONGODB_URL", os.getenv("MONGODB_URI", "mongodb://localhost:27017/"))
 MONGODB_DB = os.getenv("MONGODB_DB", "multisports")
 
 # ═══════════════════════════════════════════════════════════════════

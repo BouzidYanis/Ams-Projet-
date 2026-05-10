@@ -6,6 +6,7 @@ __pycache__/
 
 #Variables d'environnement
 .env
+.env.local
 
 # Environnements virtuels (au cas où ils rentreraient dans le dossier projet)
 env_web/

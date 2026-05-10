@@ -1,11 +1,13 @@
 import os
 from pymongo import MongoClient
+from dotenv import load_dotenv
+
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env.local"))
 
 # --- Configuration ---
-MONGODB_URI = os.getenv(
-    "MONGODB_URI",
-    "mongodb+srv://byanismci_db_user:ciFm8mSSBfSB6GOh@cluster0.tdoyk6j.mongodb.net/multisport"
-)
+MONGODB_URI = os.getenv("MONGODB_URI") or os.getenv("MONGODB_URL")
+if not MONGODB_URI:
+    raise RuntimeError("MONGODB_URI is not set. Define it in your .env file.")
 MONGODB_DB = os.getenv("MONGODB_DB", "multisport")
 
 
