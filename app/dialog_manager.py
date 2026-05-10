@@ -1540,12 +1540,13 @@ class DialogManager:
         # --- Envoyer le system prompt complet uniquement la première fois par session ---
         try:
             if not session.get("system_prompt_sent"):
-                # première requête : marquer la session
+                # première requête : marquer la session (on enverra le system prompt complet)
                 session["system_prompt_sent"] = True
                 self.sessions.update(session_id, session)
             else:
-                # requêtes suivantes : utiliser un prompt minimal
-                system_prompt = self._get_minimal_system_prompt(lang, user_name=user_name)
+                # requêtes suivantes : n'envoyer AUCUN system prompt, uniquement l'historique
+                # et les messages de contexte déjà ajoutés via _append_message().
+                system_prompt = ""
         except Exception:
             # En cas d'erreur de session, ne pas bloquer la génération
             pass

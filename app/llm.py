@@ -230,9 +230,14 @@ class LLMClient:
                 messages.append({"role": msg["role"], "content": msg["content"]})
             
             # --- DEBUG 1: CE QUE NOUS ENVOYONS ---
-            print(f"\n[LLM DEBUG] Prompt envoyé au backend {self.backend}:")
-            for m in messages:
-                print(f"  {m['role'].upper()}: {m['content'][:100]}...") # Tronqué pour lisibilité
+            # Afficher le JSON complet des messages envoyés (system + history)
+            print(f"\n[LLM DEBUG] Prompt JSON envoyé au backend {self.backend}:")
+            try:
+                print(json.dumps(messages, ensure_ascii=False, indent=2))
+            except Exception:
+                # Fallback lisible si sérialisation échoue
+                for m in messages:
+                    print(f"  {m['role'].upper()}: {m.get('content','')}")
             
             try:
                 # Appel effectif
